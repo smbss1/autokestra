@@ -5,7 +5,6 @@ import {
   number,
   object,
   optional,
-  regex,
   safeParse,
   string,
   union,
@@ -26,25 +25,25 @@ export const SUPPORTED_API_VERSIONS = [DEFAULT_API_VERSION] as const;
 const taskTypeRegex = /^[a-z0-9-]+\/[a-z0-9-]+\.[a-z0-9-]+$/;
 
 export const retrySchema = object({
-  max: minValue(integer(number()), 1),
-  backoffSeconds: optional(minValue(integer(number()), 0)),
+  max: pipe(number(), integer(), minValue(1)),
+  backoffSeconds: optional(pipe(number(), integer(), minValue(0))),
 });
 
 export const taskSchema = object({
-  id: minLength(string(), 1),
+  id: pipe(string(), minLength(1)),
   type: pipe(string(), check((value) => taskTypeRegex.test(value), 'Task type must match namespace/plugin.action format')),
-  needs: optional(array(minLength(string(), 1))),
+  needs: optional(array(pipe(string(), minLength(1)))),
   retry: optional(retrySchema),
 });
 
 export const cronTriggerSchema = object({
   type: literal('cron'),
-  cron: minLength(string(), 1),
+  cron: pipe(string(), minLength(1)),
 });
 
 export const webhookTriggerSchema = object({
   type: literal('webhook'),
-  path: minLength(string(), 1),
+  path: pipe(string(), minLength(1)),
   method: optional(union([
     literal('GET'),
     literal('POST'),
@@ -57,12 +56,12 @@ export const webhookTriggerSchema = object({
 export const triggerSchema = union([cronTriggerSchema, webhookTriggerSchema]);
 
 export const workflowSchema = object({
-  id: minLength(string(), 1),
+  id: pipe(string(), minLength(1)),
   enabled: optional(boolean()),
   trigger: optional(triggerSchema),
   tasks: array(taskSchema),
-  apiVersion: optional(minLength(string(), 1)),
-  version: optional(minLength(string(), 1)),
+  apiVersion: optional(pipe(string(), minLength(1))),
+  version: optional(pipe(string(), minLength(1))),
 });
 
 function toPathString(valibotPath: any[] | undefined): string {
