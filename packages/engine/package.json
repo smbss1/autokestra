@@ -9,6 +9,7 @@
     "format": "bunx prettier --write src/**/*.ts"
   },
   "dependencies": {
+    "valibot": "^1.2.0",
     "yaml": "^2.8.2"
   },
   "devDependencies": {

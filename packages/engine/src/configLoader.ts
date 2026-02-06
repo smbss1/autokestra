@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { parse } from 'yaml';
-import { Config, DEFAULT_CONFIG } from './config.js';
+import { safeParse } from 'valibot';
+import { Config, DEFAULT_CONFIG, configSchema } from './config.js';
 
 export class ConfigLoadError extends Error {
   constructor(message: string, public readonly cause?: Error) {
@@ -10,24 +11,21 @@ export class ConfigLoadError extends Error {
 }
 
 export class ConfigValidationError extends Error {
-  constructor(message: string) {
+  constructor(message: string, public readonly issues?: any[]) {
     super(message);
     this.name = 'ConfigValidationError';
   }
 }
 
 function validateConfig(config: Config): void {
+  const result = safeParse(configSchema, config);
+  if (!result.success) {
+    const issues = result.issues.map(issue => `${issue.path?.map(p => p.key).join('.')}: ${issue.message}`).join('\n');
+    throw new ConfigValidationError(`Configuration validation failed:\n${issues}`, result.issues);
+  }
+
+  // Additional conditional validations
   const errors: string[] = [];
-
-  // Server validation
-  if (typeof config.server.port !== 'number' || config.server.port < 1 || config.server.port > 65535) {
-    errors.push('server.port must be a number between 1 and 65535');
-  }
-
-  // Storage validation
-  if (!['sqlite', 'postgresql'].includes(config.storage.type)) {
-    errors.push('storage.type must be either "sqlite" or "postgresql"');
-  }
 
   if (config.storage.type === 'sqlite' && !config.storage.path) {
     errors.push('storage.path is required for sqlite storage');
@@ -36,20 +34,6 @@ function validateConfig(config: Config): void {
   if (config.storage.type === 'postgresql') {
     if (!config.storage.host) errors.push('storage.host is required for postgresql storage');
     if (!config.storage.database) errors.push('storage.database is required for postgresql storage');
-  }
-
-  // Execution validation
-  if (typeof config.execution.maxConcurrentWorkflows !== 'number' || config.execution.maxConcurrentWorkflows < 1) {
-    errors.push('execution.maxConcurrentWorkflows must be a positive number');
-  }
-
-  if (typeof config.execution.maxConcurrentTasks !== 'number' || config.execution.maxConcurrentTasks < 1) {
-    errors.push('execution.maxConcurrentTasks must be a positive number');
-  }
-
-  if (config.execution.defaultTimeoutSeconds !== undefined &&
-      (typeof config.execution.defaultTimeoutSeconds !== 'number' || config.execution.defaultTimeoutSeconds < 1)) {
-    errors.push('execution.defaultTimeoutSeconds must be a positive number if specified');
   }
 
   if (errors.length > 0) {

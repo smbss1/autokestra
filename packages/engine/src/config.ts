@@ -1,3 +1,5 @@
+import { object, number, string, union, literal, optional, check, pipe, minValue, maxValue } from 'valibot';
+
 export interface ServerConfig {
   port: number;
   host?: string;
@@ -40,3 +42,31 @@ export const DEFAULT_CONFIG: Config = {
     defaultTimeoutSeconds: 3600,
   },
 };
+
+// Valibot schemas
+export const serverConfigSchema = object({
+  port: pipe(number(), minValue(1), maxValue(65535)),
+  host: optional(string()),
+});
+
+export const storageConfigSchema = object({
+  type: union([literal('sqlite'), literal('postgresql')]),
+  path: optional(string()),
+  host: optional(string()),
+  port: optional(pipe(number(), minValue(1), maxValue(65535))),
+  database: optional(string()),
+  username: optional(string()),
+  password: optional(string()),
+});
+
+export const executionConfigSchema = object({
+  maxConcurrentWorkflows: pipe(number(), minValue(1)),
+  maxConcurrentTasks: pipe(number(), minValue(1)),
+  defaultTimeoutSeconds: optional(pipe(number(), minValue(1))),
+});
+
+export const configSchema = object({
+  server: serverConfigSchema,
+  storage: storageConfigSchema,
+  execution: executionConfigSchema,
+});
