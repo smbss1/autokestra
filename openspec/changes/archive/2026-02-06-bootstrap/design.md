@@ -27,7 +27,7 @@ Contraintes importantes : runtime Bun + TypeScript, CLI-first, pas de GUI en v1,
   - Alternative : monorepo “lourd” (outils avancés) → rejeté pour v0, risque de friction DX.
 
 - **Configuration en YAML + surcharge env, avec typage et validation**
-  - Décision : définir un schéma de config TypeScript (interfaces) et valider au chargement; appliquer une stratégie d’override simple (préfixe env, mapping explicite).
+  - Décision : définir un schéma de config TypeScript avec unions discriminées (pour storage types) et utiliser Valibot pour la validation type-safe avec messages d'erreur détaillés; appliquer une stratégie d'override simple (préfixe env, mapping explicite) avec validation des valeurs d'environnement.
   - Alternative : configuration uniquement env → rejeté (moins ergonomique, moins portable).
   - Alternative : config libre sans validation → rejeté (erreurs tardives, non déterministe).
 

@@ -7,10 +7,10 @@
 
 ## 2. Configuration loading & env overrides
 
-- [x] 2.1 Define TypeScript config schema/interfaces for server/storage/execution settings
+- [x] 2.1 Define TypeScript config schema/interfaces with discriminated unions for storage types (SQLite/PostgreSQL) using Valibot schemas
 - [x] 2.2 Implement config loader for YAML (read/parse) with clear parse/read error messages
-- [x] 2.3 Implement deterministic env override mapping and precedence rules (env > YAML)
-- [x] 2.4 Implement config validation (types/ranges/enums) and deterministic exit code on invalid config
+- [x] 2.3 Implement deterministic env override mapping and precedence rules (env > YAML) with Valibot validation of env values
+- [x] 2.4 Implement config validation using Valibot schemas and deterministic exit code on invalid config
 - [x] 2.5 Add table-driven tests covering YAML parsing, env overrides, and validation failures
 
 ## 3. CLI skeleton (command tree, JSON output, exit codes)
