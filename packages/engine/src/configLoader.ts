@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { parse } from 'yaml';
 import { safeParse } from 'valibot';
-import { Config, DEFAULT_CONFIG, configSchema } from './config.js';
+import { Config, DEFAULT_CONFIG, configSchema, envServerOverrideSchema, envStorageOverrideSchema, envExecutionOverrideSchema } from './config.js';
 
 export class ConfigLoadError extends Error {
   constructor(message: string, public readonly cause?: Error) {
@@ -23,64 +23,75 @@ function validateConfig(config: Config): void {
     const issues = result.issues.map(issue => `${issue.path?.map(p => p.key).join('.')}: ${issue.message}`).join('\n');
     throw new ConfigValidationError(`Configuration validation failed:\n${issues}`, result.issues);
   }
-
-  // Additional conditional validations
-  const errors: string[] = [];
-
-  if (config.storage.type === 'sqlite' && !config.storage.path) {
-    errors.push('storage.path is required for sqlite storage');
-  }
-
-  if (config.storage.type === 'postgresql') {
-    if (!config.storage.host) errors.push('storage.host is required for postgresql storage');
-    if (!config.storage.database) errors.push('storage.database is required for postgresql storage');
-  }
-
-  if (errors.length > 0) {
-    throw new ConfigValidationError(`Configuration validation failed:\n${errors.join('\n')}`);
-  }
 }
 
 function applyEnvOverrides(config: Config): Config {
   const envOverrides: Partial<Config> = {};
 
   // Server overrides
+  const serverOverrides: any = {};
   if (process.env.WORKFLOW_SERVER_PORT) {
-    envOverrides.server = { ...config.server, port: parseInt(process.env.WORKFLOW_SERVER_PORT, 10) };
+    serverOverrides.port = parseInt(process.env.WORKFLOW_SERVER_PORT, 10);
+  }
+  if (process.env.WORKFLOW_SERVER_HOST) {
+    serverOverrides.host = process.env.WORKFLOW_SERVER_HOST;
+  }
+  if (Object.keys(serverOverrides).length > 0) {
+    const result = safeParse(envServerOverrideSchema, serverOverrides);
+    if (!result.success) {
+      throw new ConfigValidationError(`Invalid server environment overrides: ${result.issues.map(i => i.message).join(', ')}`);
+    }
+    envOverrides.server = { ...config.server, ...serverOverrides };
   }
 
   // Storage overrides
+  const storageOverrides: any = {};
   if (process.env.WORKFLOW_STORAGE_TYPE) {
-    envOverrides.storage = { ...config.storage, type: process.env.WORKFLOW_STORAGE_TYPE as 'sqlite' | 'postgresql' };
+    storageOverrides.type = process.env.WORKFLOW_STORAGE_TYPE;
   }
   if (process.env.WORKFLOW_STORAGE_PATH) {
-    envOverrides.storage = { ...config.storage, ...envOverrides.storage, path: process.env.WORKFLOW_STORAGE_PATH };
+    storageOverrides.path = process.env.WORKFLOW_STORAGE_PATH;
   }
   if (process.env.WORKFLOW_STORAGE_HOST) {
-    envOverrides.storage = { ...config.storage, ...envOverrides.storage, host: process.env.WORKFLOW_STORAGE_HOST };
+    storageOverrides.host = process.env.WORKFLOW_STORAGE_HOST;
   }
   if (process.env.WORKFLOW_STORAGE_PORT) {
-    envOverrides.storage = { ...config.storage, ...envOverrides.storage, port: parseInt(process.env.WORKFLOW_STORAGE_PORT, 10) };
+    storageOverrides.port = parseInt(process.env.WORKFLOW_STORAGE_PORT, 10);
   }
   if (process.env.WORKFLOW_STORAGE_DATABASE) {
-    envOverrides.storage = { ...config.storage, ...envOverrides.storage, database: process.env.WORKFLOW_STORAGE_DATABASE };
+    storageOverrides.database = process.env.WORKFLOW_STORAGE_DATABASE;
   }
   if (process.env.WORKFLOW_STORAGE_USERNAME) {
-    envOverrides.storage = { ...config.storage, ...envOverrides.storage, username: process.env.WORKFLOW_STORAGE_USERNAME };
+    storageOverrides.username = process.env.WORKFLOW_STORAGE_USERNAME;
   }
   if (process.env.WORKFLOW_STORAGE_PASSWORD) {
-    envOverrides.storage = { ...config.storage, ...envOverrides.storage, password: process.env.WORKFLOW_STORAGE_PASSWORD };
+    storageOverrides.password = process.env.WORKFLOW_STORAGE_PASSWORD;
+  }
+  if (Object.keys(storageOverrides).length > 0) {
+    const result = safeParse(envStorageOverrideSchema, storageOverrides);
+    if (!result.success) {
+      throw new ConfigValidationError(`Invalid storage environment overrides: ${result.issues.map(i => i.message).join(', ')}`);
+    }
+    envOverrides.storage = { ...config.storage, ...storageOverrides };
   }
 
   // Execution overrides
+  const executionOverrides: any = {};
   if (process.env.WORKFLOW_EXECUTION_MAX_CONCURRENT_WORKFLOWS) {
-    envOverrides.execution = { ...config.execution, ...envOverrides.execution, maxConcurrentWorkflows: parseInt(process.env.WORKFLOW_EXECUTION_MAX_CONCURRENT_WORKFLOWS, 10) };
+    executionOverrides.maxConcurrentWorkflows = parseInt(process.env.WORKFLOW_EXECUTION_MAX_CONCURRENT_WORKFLOWS, 10);
   }
   if (process.env.WORKFLOW_EXECUTION_MAX_CONCURRENT_TASKS) {
-    envOverrides.execution = { ...config.execution, ...envOverrides.execution, maxConcurrentTasks: parseInt(process.env.WORKFLOW_EXECUTION_MAX_CONCURRENT_TASKS, 10) };
+    executionOverrides.maxConcurrentTasks = parseInt(process.env.WORKFLOW_EXECUTION_MAX_CONCURRENT_TASKS, 10);
   }
   if (process.env.WORKFLOW_EXECUTION_DEFAULT_TIMEOUT_SECONDS) {
-    envOverrides.execution = { ...config.execution, ...envOverrides.execution, defaultTimeoutSeconds: parseInt(process.env.WORKFLOW_EXECUTION_DEFAULT_TIMEOUT_SECONDS, 10) };
+    executionOverrides.defaultTimeoutSeconds = parseInt(process.env.WORKFLOW_EXECUTION_DEFAULT_TIMEOUT_SECONDS, 10);
+  }
+  if (Object.keys(executionOverrides).length > 0) {
+    const result = safeParse(envExecutionOverrideSchema, executionOverrides);
+    if (!result.success) {
+      throw new ConfigValidationError(`Invalid execution environment overrides: ${result.issues.map(i => i.message).join(', ')}`);
+    }
+    envOverrides.execution = { ...config.execution, ...executionOverrides };
   }
 
   // Deep merge: env overrides take precedence

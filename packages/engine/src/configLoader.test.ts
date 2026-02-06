@@ -3,6 +3,7 @@ import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { loadConfigFromFile, ConfigLoadError, ConfigValidationError } from './configLoader.js';
+import { SqliteStorageConfig } from './config.js';
 
 describe('ConfigLoader', () => {
   let tempFile: string;
@@ -37,7 +38,7 @@ execution:
 
       expect(config.server.port).toBe(8080);
       expect(config.storage.type).toBe('sqlite');
-      expect(config.storage.path).toBe('./test.db');
+      expect((config.storage as SqliteStorageConfig).path).toBe('./test.db');
       expect(config.execution.maxConcurrentWorkflows).toBe(5);
       expect(config.execution.maxConcurrentTasks).toBe(10);
     });
@@ -155,6 +156,38 @@ storage:
   path: ./test.db
 execution:
   maxConcurrentWorkflows: -1
+  maxConcurrentTasks: 10
+`;
+      writeFileSync(tempFile, configYaml);
+
+      expect(() => loadConfigFromFile(tempFile)).toThrow(ConfigValidationError);
+    });
+
+    it('should throw ConfigValidationError for postgresql without host', () => {
+      const configYaml = `
+server:
+  port: 8080
+storage:
+  type: postgresql
+  database: testdb
+execution:
+  maxConcurrentWorkflows: 5
+  maxConcurrentTasks: 10
+`;
+      writeFileSync(tempFile, configYaml);
+
+      expect(() => loadConfigFromFile(tempFile)).toThrow(ConfigValidationError);
+    });
+
+    it('should throw ConfigValidationError for postgresql without database', () => {
+      const configYaml = `
+server:
+  port: 8080
+storage:
+  type: postgresql
+  host: localhost
+execution:
+  maxConcurrentWorkflows: 5
   maxConcurrentTasks: 10
 `;
       writeFileSync(tempFile, configYaml);
