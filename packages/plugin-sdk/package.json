@@ -1,0 +1,15 @@
+{
+  "name": "@autokestra/plugin-sdk",
+  "version": "0.0.1",
+  "description": "SDK for building plugins",
+  "main": "index.ts",
+  "scripts": {
+    "build": "bun build index.ts --outdir dist",
+    "lint": "bunx eslint src/**/*.ts",
+    "format": "bunx prettier --write src/**/*.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}

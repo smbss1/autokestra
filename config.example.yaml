@@ -1,0 +1,28 @@
+# Example configuration file for Autokestra
+# This file shows all available configuration options with their default values
+
+server:
+  # HTTP server port
+  port: 7233
+  # Optional: server host (defaults to 0.0.0.0)
+  # host: "127.0.0.1"
+
+storage:
+  # Storage backend: "sqlite" or "postgresql"
+  type: "sqlite"
+  # For SQLite: path to database file
+  path: "./data/db.sqlite"
+  # For PostgreSQL: connection details
+  # host: "localhost"
+  # port: 5432
+  # database: "autokestra"
+  # username: "user"
+  # password: "password"
+
+execution:
+  # Maximum concurrent workflows
+  maxConcurrentWorkflows: 10
+  # Maximum concurrent tasks across all workflows
+  maxConcurrentTasks: 50
+  # Default timeout for tasks in seconds (optional)
+  # defaultTimeoutSeconds: 3600

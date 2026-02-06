@@ -1,66 +1,66 @@
 schema: spec-driven
 
 context: |
-	Project: Workflow Engine (inspired by Kestra / n8n)
-	Goal: self-hosted workflow engine that is lightweight, secure, and extensible.
-	Audience: technical teams (backend/fullstack, platform/DevOps, automation).
+    Project: Workflow Engine (inspired by Kestra / n8n)
+    Goal: self-hosted workflow engine that is lightweight, secure, and extensible.
+    Audience: technical teams (backend/fullstack, platform/DevOps, automation).
 
-	Core principles:
-	- CLI-first (no GUI in v1)
-	- Secure by default / zero-trust plugins
-	- Deterministic executions and crash-safe recovery
-	- Isolated plugins (WASM), no untrusted native code execution
-	- Observable (logs, inspection, audit)
+    Core principles:
+    - CLI-first (no GUI in v1)
+    - Secure by default / zero-trust plugins
+    - Deterministic executions and crash-safe recovery
+    - Isolated plugins (WASM), no untrusted native code execution
+    - Observable (logs, inspection, audit)
 
-	Stack & runtime:
-	- Core language: TypeScript
-	- Runtime: Bun
-	- HTTP server: Bun native / Hono
-	- YAML parsing: `yaml` package
-	- Persistence: SQLite (default) then PostgreSQL (production)
+    Stack & runtime:
+    - Core language: TypeScript
+    - Runtime: Bun
+    - HTTP server: Bun native / Hono
+    - YAML parsing: `yaml` package
+    - Persistence: SQLite (default) then PostgreSQL (production)
 
-	Architecture (modular monolith):
-	- API
-	- Workflow Registry
-	- Scheduler (DAG resolution)
-	- Execution Engine + Worker Pool
-	- Plugin Runtime (WASM)
-	- Secrets Manager
-	- State Store
+    Architecture (modular monolith):
+    - API
+    - Workflow Registry
+    - Scheduler (DAG resolution)
+    - Execution Engine + Worker Pool
+    - Plugin Runtime (WASM)
+    - Secrets Manager
+    - State Store
 
-	Workflow DSL (YAML):
-	- `id`, `enabled`, `trigger` (cron/webhook), `tasks` (DAG)
-	- Dependencies via `needs: [taskId]`
-	- Retries via `retry: { max, backoff }`
-	- Plugin-driven tasks via `type: <namespace>/<plugin>.<action>` (e.g. `core/http.get`)
-	- No secrets in workflow YAML: runtime injection only
+    Workflow DSL (YAML):
+    - `id`, `enabled`, `trigger` (cron/webhook), `tasks` (DAG)
+    - Dependencies via `needs: [taskId]`
+    - Retries via `retry: { max, backoff }`
+    - Plugin-driven tasks via `type: <namespace>/<plugin>.<action>` (e.g. `core/http.get`)
+    - No secrets in workflow YAML: runtime injection only
 
-	Execution states (state machine): PENDING, RUNNING, WAITING, SUCCESS, FAILED, CANCELLED.
-	Guarantees: idempotent transitions, crash-safe, retryable tasks, resume after restart.
+    Execution states (state machine): PENDING, RUNNING, WAITING, SUCCESS, FAILED, CANCELLED.
+    Guarantees: idempotent transitions, crash-safe, retryable tasks, resume after restart.
 
-	Plugin system:
-	- TypeScript plugins compiled to WASM; executed via Wasmtime/Wasmer (sandbox)
-	- Manifest `plugin.yaml`: metadata, actions+schemas, declarative permissions
-	- Permissions model: network (allowlist), virtualized filesystem, explicit env vars,
-		controlled plugin-to-plugin calls; no permissions by default
+    Plugin system:
+    - TypeScript plugins compiled to WASM; executed via Wasmtime/Wasmer (sandbox)
+    - Manifest `plugin.yaml`: metadata, actions+schemas, declarative permissions
+    - Permissions model: network (allowlist), virtualized filesystem, explicit env vars,
+        controlled plugin-to-plugin calls; no permissions by default
 
-	Security / threat model to keep in mind:
-	- Threats: malicious plugins, SSRF, secret leakage, supply-chain, YAML injection
-	- Mitigations: WASM sandbox, permission enforcement, strict validation, audit logs,
-		no arbitrary `eval`
+    Security / threat model to keep in mind:
+    - Threats: malicious plugins, SSRF, secret leakage, supply-chain, YAML injection
+    - Mitigations: WASM sandbox, permission enforcement, strict validation, audit logs,
+        no arbitrary `eval`
 
-	CLI (target command tree):
-	- `workflow server start|stop|status`
-	- `workflow workflow apply|delete|enable|disable|list|describe`
-	- `workflow execution list|logs|inspect|cancel`
-	- `workflow plugin init|build|install|list|remove`
-	- `workflow config set`
-	Requirements: scriptable, optional JSON output, deterministic exit codes.
+    CLI (target command tree):
+    - `workflow server start|stop|status`
+    - `workflow workflow apply|delete|enable|disable|list|describe`
+    - `workflow execution list|logs|inspect|cancel`
+    - `workflow plugin init|build|install|list|remove`
+    - `workflow config set`
+    Requirements: scriptable, optional JSON output, deterministic exit codes.
 
-	v1 product constraints:
-	- No UI/low-code
-	- Must run on modest hardware (≈ 2 CPU / 4GB RAM)
-	- Extensible without recompiling the core
+    v1 product constraints:
+    - No UI/low-code
+    - Must run on modest hardware (≈ 2 CPU / 4GB RAM)
+    - Extensible without recompiling the core
 
 # Project context (optional)
 # This is shown to AI when creating artifacts.

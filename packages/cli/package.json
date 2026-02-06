@@ -1,0 +1,22 @@
+{
+  "name": "@autokestra/cli",
+  "version": "0.0.1",
+  "description": "Command-line interface",
+  "main": "index.ts",
+  "bin": {
+    "workflow": "dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build index.ts --outdir dist",
+    "lint": "bunx eslint src/**/*.ts",
+    "format": "bunx prettier --write src/**/*.ts"
+  },
+  "dependencies": {
+    "@autokestra/engine": "workspace:*",
+    "@autokestra/server": "workspace:*",
+    "commander": "^12.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
+  }
+}
