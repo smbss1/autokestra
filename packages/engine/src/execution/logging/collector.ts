@@ -46,6 +46,7 @@ export class LogCollector {
     this.buffer.push(entry);
 
     if (this.buffer.length >= this.maxBufferSize) {
+      console.warn(`Log buffer overflow: flushing ${this.buffer.length} entries early`);
       this.flush();
     }
   }

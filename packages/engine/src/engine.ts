@@ -115,6 +115,13 @@ export class Engine {
     return this.stateStore;
   }
 
+  getDatabase(): any {
+    if (!this.initialized) {
+      throw new Error('Engine not initialized. Call initialize() first.');
+    }
+    return (this.stateStore as any).db;
+  }
+
   isInitialized(): boolean {
     return this.initialized;
   }

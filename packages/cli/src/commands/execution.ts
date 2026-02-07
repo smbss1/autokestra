@@ -206,7 +206,7 @@ export async function inspectExecution(
   try {
     await engine.initialize();
     const stateStore = engine.getStateStore();
-    const logStore = new LogStore({ db: stateStore.db });
+    const logStore = new LogStore({ db: engine.getDatabase() });
 
     const execution = await stateStore.getExecution(executionId);
     if (!execution) {
@@ -321,7 +321,7 @@ export async function getExecutionLogs(
   try {
     await engine.initialize();
     const stateStore = engine.getStateStore();
-    const logStore = new LogStore({ db: stateStore.db });
+    const logStore = new LogStore({ db: engine.getDatabase() });
 
     // Verify execution exists
     const execution = await stateStore.getExecution(executionId);
@@ -388,11 +388,76 @@ export async function getExecutionLogs(
       }
     }
 
-    // TODO: Implement --follow for streaming logs
+    // Implement --follow for streaming logs
     if (options.follow) {
-      console.error('--follow not yet implemented');
+      await streamLogs(engine, executionId, options);
+      return;
     }
   } finally {
     await engine.shutdown();
   }
+}
+
+/**
+ * Stream logs for a running execution in real-time
+ */
+async function streamLogs(engine: Engine, executionId: string, options: ExecutionLogsOptions): Promise<void> {
+  const stateStore = engine.getStateStore();
+  const logStore = new LogStore({ db: engine.getDatabase() });
+
+  let lastTimestamp = Date.now();
+  let executionCompleted = false;
+
+  console.log(`\nStreaming logs for execution: ${executionId}`);
+  console.log('Press Ctrl+C to stop\n');
+
+  // Stream logs until execution completes or user interrupts
+  while (!executionCompleted) {
+    try {
+      // Check if execution is still running
+      const execution = await stateStore.getExecution(executionId);
+      if (!execution) {
+        console.error(`Execution ${executionId} not found`);
+        return;
+      }
+
+      if (execution.state === ExecutionState.SUCCESS ||
+          execution.state === ExecutionState.FAILED ||
+          execution.state === ExecutionState.CANCELLED) {
+        executionCompleted = true;
+        console.log(`\nExecution ${execution.state.toLowerCase()}`);
+        break;
+      }
+
+      // Get new logs since last check
+      const newLogs = logStore.getLogsByExecution(executionId, {}, {
+        limit: 1000 // Get up to 1000 new logs per poll
+      }).filter(log => log.timestamp > lastTimestamp);
+
+      // Display new logs
+      for (const log of newLogs) {
+        const timestamp = new Date(log.timestamp).toISOString();
+        const taskInfo = log.taskId ? `[${log.taskId}] ` : '';
+        const level = log.level.padEnd(5);
+        console.log(`${timestamp} ${level} ${log.source} ${taskInfo}${log.message}`);
+        if (log.metadata && Object.keys(log.metadata).length > 0) {
+          console.log(`  ${JSON.stringify(log.metadata)}`);
+        }
+      }
+
+      // Update last timestamp
+      if (newLogs.length > 0) {
+        lastTimestamp = Math.max(...newLogs.map(log => log.timestamp));
+      }
+
+      // Wait before next poll (100ms)
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+    } catch (error) {
+      console.error('Error streaming logs:', error);
+      break;
+    }
+  }
+
+  console.log('\nLog streaming completed');
 }

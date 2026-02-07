@@ -95,9 +95,18 @@ export class ProcessRuntime implements PluginRuntime {
   }
 
   private parseAndLog(line: string, logContext: LogContext): void {
+    const MAX_LINE_LENGTH = 10000; // 10KB limit per log line
+    let processedLine = line;
+    let truncated = false;
+
+    if (line.length > MAX_LINE_LENGTH) {
+      processedLine = line.substring(0, MAX_LINE_LENGTH) + '...[TRUNCATED]';
+      truncated = true;
+    }
+
     try {
       // Try to parse as structured log (JSON)
-      const logData = JSON.parse(line);
+      const logData = JSON.parse(processedLine);
       if (logData.level && logData.message) {
         logContext.logCollector!.log({
           executionId: logContext.executionId,
@@ -106,7 +115,7 @@ export class ProcessRuntime implements PluginRuntime {
           level: logData.level.toUpperCase(),
           source: `plugin:${logContext.executionId}/${logContext.taskId}`,
           message: logData.message,
-          metadata: logData.metadata,
+          metadata: { ...logData.metadata, ...(truncated && { truncated: true }) },
         });
         return;
       }
@@ -121,7 +130,8 @@ export class ProcessRuntime implements PluginRuntime {
       timestamp: Date.now(),
       level: 'INFO',
       source: `plugin:${logContext.executionId}/${logContext.taskId}`,
-      message: line,
+      message: processedLine,
+      metadata: truncated ? { truncated: true } : undefined,
     });
   }
 }

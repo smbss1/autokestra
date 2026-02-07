@@ -125,5 +125,8 @@ describe('LogRetentionManager', () => {
     expect(stats.auditEventCount).toBe(1);
     expect(stats.oldestLog).toBeDefined();
     expect(stats.oldestAuditEvent).toBeDefined();
+    expect(stats.estimatedLogSizeMB).toBeGreaterThan(0);
+    expect(stats.estimatedAuditSizeMB).toBeGreaterThan(0);
+    expect(stats.totalEstimatedSizeMB).toBeGreaterThan(0);
   });
 });

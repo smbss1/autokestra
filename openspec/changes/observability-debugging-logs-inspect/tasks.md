@@ -138,42 +138,42 @@
 
 ## 14. Performance & Optimization
 
-- [ ] 14.1 Verify SQLite WAL mode enabled for log writes
-- [ ] 14.2 Test log write performance (benchmark with 10k log entries)
-- [ ] 14.3 Test query performance (benchmark execution with 100+ tasks)
-- [ ] 14.4 Optimize batch sizes if needed (buffering, pagination)
-- [ ] 14.5 Add database size monitoring (track execution_logs and audit_events table sizes)
-- [ ] 14.6 Log WARNING when tables exceed 1GB
+- [x] 14.1 Verify SQLite WAL mode enabled for log writes
+- [x] 14.2 Test log write performance (benchmark with 10k log entries)
+- [x] 14.3 Test query performance (benchmark execution with 100+ tasks)
+- [x] 14.4 Optimize batch sizes if needed (buffering, pagination)
+- [x] 14.5 Add database size monitoring (track execution_logs and audit_events table sizes)
+- [x] 14.6 Log WARNING when tables exceed 1GB
 
 ## 15. Integration Tests
 
-- [ ] 15.1 End-to-end test: create execution → verify logs captured
-- [ ] 15.2 Test: retrieve logs via CLI for completed execution
-- [ ] 15.3 Test: stream logs for running execution (--follow)
-- [ ] 15.4 Test: inspect execution with multiple tasks
+- [x] 15.1 End-to-end test: create execution → verify logs captured
+- [x] 15.2 Test: retrieve logs via CLI for completed execution
+- [x] 15.3 Test: stream logs for running execution (--follow)
+- [x] 15.4 Test: inspect execution with multiple tasks
 - [ ] 15.5 Test: plugin stdout/stderr captured correctly
 - [ ] 15.6 Test: audit trail shows all lifecycle events
 - [ ] 15.7 Test: log retention cleanup deletes old logs
 - [ ] 15.8 Test: filtering works (task, level, since)
 - [ ] 15.9 Test: JSON output format for logs and inspect
-- [ ] 15.10 Test: secrets masked in task inputs
+- [x] 15.10 Test: secrets masked in task inputs
 
 ## 16. Documentation
 
-- [ ] 16.1 Document log collection architecture in design docs
-- [ ] 16.2 Document CLI commands (logs, inspect) with examples
-- [ ] 16.3 Document configuration options (log retention)
-- [ ] 16.4 Document log levels and when to use each
-- [ ] 16.5 Document audit trail structure and use cases
-- [ ] 16.6 Add troubleshooting guide (common issues, performance tuning)
-- [ ] 16.7 Update README with observability features
+- [x] 16.1 Document log collection architecture in design docs
+- [x] 16.2 Document CLI commands (logs, inspect) with examples
+- [x] 16.3 Document configuration options (log retention)
+- [x] 16.4 Document log levels and when to use each
+- [x] 16.5 Document audit trail structure and use cases
+- [x] 16.6 Add troubleshooting guide (common issues, performance tuning)
+- [x] 16.7 Update README with observability features
 
 ## 17. Error Handling & Edge Cases
 
-- [ ] 17.1 Handle missing execution_id gracefully (error message, exit code 1)
-- [ ] 17.2 Handle invalid filters (level, since format) with clear errors
-- [ ] 17.3 Handle database write failures (log to stderr, continue execution)
-- [ ] 17.4 Handle log buffer overflow (flush early, log warning)
-- [ ] 17.5 Handle plugin log truncation edge cases (very long lines)
-- [ ] 17.6 Handle concurrent log writes (transaction isolation)
-- [ ] 17.7 Test all error scenarios (verify graceful degradation)
+- [x] 17.1 Handle missing execution_id gracefully (error message, exit code 1)
+- [x] 17.2 Handle invalid filters (level, since format) with clear errors
+- [x] 17.3 Handle database write failures (log to stderr, continue execution)
+- [x] 17.4 Handle log buffer overflow (flush early, log warning)
+- [x] 17.5 Handle plugin log truncation edge cases (very long lines)
+- [x] 17.6 Handle concurrent log writes (transaction isolation)
+- [x] 17.7 Test all error scenarios (verify graceful degradation)
