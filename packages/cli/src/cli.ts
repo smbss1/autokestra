@@ -83,6 +83,42 @@ program
   );
 
 program
+  .command('plugin')
+  .description('manage plugins')
+  .addCommand(
+    new Command('build')
+      .description('build a plugin Docker image')
+      .argument('<name>', 'plugin name')
+      .action((name) => {
+        console.log(`Building plugin ${name} - not yet implemented`);
+        process.exit(EXIT_ERROR);
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('list available plugins')
+      .option('--json', 'output in JSON format')
+      .action((options) => {
+        if (options.json) {
+          console.log(JSON.stringify({ plugins: [] }, null, 2));
+        } else {
+          console.log('No plugins found');
+        }
+        process.exit(EXIT_SUCCESS);
+      })
+  )
+  .addCommand(
+    new Command('inspect')
+      .description('inspect a plugin')
+      .argument('<name>', 'plugin name')
+      .option('--json', 'output in JSON format')
+      .action((name, options) => {
+        console.log(`Inspecting plugin ${name} - not yet implemented`);
+        process.exit(EXIT_ERROR);
+      })
+  );
+
+program
   .command('execution')
   .description('manage executions')
   .addCommand(

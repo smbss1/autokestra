@@ -1,0 +1,21 @@
+name: http-client
+version: 1.0.0
+namespace: core
+description: HTTP client plugin
+actions:
+  - name: get
+    description: Make HTTP GET request
+    input:
+      type: object
+      properties:
+        url:
+          type: string
+    output:
+      type: object
+      properties:
+        data:
+          type: string
+        status:
+          type: number
+capabilities:
+  - network
