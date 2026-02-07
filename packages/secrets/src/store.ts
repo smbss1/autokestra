@@ -15,7 +15,8 @@ export class SecretStore {
 
   constructor(dbPath?: string) {
     const defaultPath = join(process.cwd(), 'secrets.db');
-    this.db = new Database(dbPath || defaultPath);
+    const envPath = process.env.SECRETS_DB_PATH;
+    this.db = new Database(dbPath || envPath || defaultPath);
     this.keyProvider = new MasterKeyProvider();
     this.initSchema();
   }
@@ -83,6 +84,8 @@ export class SecretStore {
   }
 
   private isValidSecretName(name: string): boolean {
-    return /^[A-Z_][A-Z0-9_-]*$/.test(name);
+    // Allow human-friendly names while keeping them shell/env-safe-ish.
+    // Examples: API_KEY, api-key, mySecret_1
+    return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(name);
   }
 }

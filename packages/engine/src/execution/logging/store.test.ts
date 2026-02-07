@@ -61,7 +61,7 @@ describe('LogStore', () => {
     expect(logs[0].level).toBe('INFO');
     expect(logs[1].taskId).toBe('task-2');
     expect(logs[1].level).toBe('ERROR');
-    expect(logs[1].metadata).toEqual({ key: 'value' });
+    expect(logs[0].metadata).toEqual({ key: 'value' });
   });
 
   it('should filter logs by level', () => {

@@ -36,15 +36,12 @@ export async function setSecret(name: string, value?: string): Promise<void> {
     }
 
     if (!secretValue) {
-      console.error('Secret value cannot be empty');
-      process.exit(1);
+      throw new Error('Secret value cannot be empty');
     }
 
-    store.set(name, secretValue);
-    console.log(`Secret '${name}' set successfully`);
+    await store.set(name, secretValue);
   } catch (error) {
-    console.error('Error setting secret:', error);
-    process.exit(1);
+    throw error;
   } finally {
     store.close();
   }
@@ -53,21 +50,18 @@ export async function setSecret(name: string, value?: string): Promise<void> {
 /**
  * Get a secret value
  */
-export async function getSecret(name: string): Promise<void> {
+export async function getSecret(name: string): Promise<string> {
   const store = new SecretStore();
 
   try {
-    const value = store.get(name);
+    const value = await store.get(name);
     if (value === null) {
-      console.error(`Secret '${name}' not found`);
-      process.exit(1);
+      throw new Error(`Secret '${name}' not found`);
     }
 
-    console.warn('WARNING: Displaying secret values can be a security risk!');
-    console.log(value);
+    return value;
   } catch (error) {
-    console.error('Error getting secret:', error);
-    process.exit(1);
+    throw error;
   } finally {
     store.close();
   }
@@ -76,27 +70,18 @@ export async function getSecret(name: string): Promise<void> {
 /**
  * List secrets
  */
-export async function listSecrets(options: SecretsListOptions = {}): Promise<void> {
+export async function listSecrets(options: SecretsListOptions = {}): Promise<ReturnType<SecretStore['list']>> {
   const store = new SecretStore();
 
   try {
     const secrets = store.list();
 
-    if (options.json) {
-      console.log(JSON.stringify({ secrets }, null, 2));
-    } else {
-      if (secrets.length === 0) {
-        console.log('No secrets found');
-      } else {
-        console.log('Secrets:');
-        secrets.forEach(secret => {
-          console.log(`  ${secret.name} (created: ${new Date(secret.created_at).toISOString()})`);
-        });
-      }
-    }
+    // When used as a library (tests / future commands), return data.
+    // CLI layer can format/print as needed.
+    void options;
+    return secrets;
   } catch (error) {
-    console.error('Error listing secrets:', error);
-    process.exit(1);
+    throw error;
   } finally {
     store.close();
   }
@@ -131,14 +116,12 @@ export async function deleteSecret(name: string, options: SecretsDeleteOptions =
 
     const deleted = store.delete(name);
     if (deleted) {
-      console.log(`Secret '${name}' deleted successfully`);
+      return;
     } else {
-      console.error(`Secret '${name}' not found`);
-      process.exit(1);
+      throw new Error(`Secret '${name}' not found`);
     }
   } catch (error) {
-    console.error('Error deleting secret:', error);
-    process.exit(1);
+    throw error;
   } finally {
     store.close();
   }

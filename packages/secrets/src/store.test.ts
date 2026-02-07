@@ -59,12 +59,15 @@ describe('SecretStore', () => {
   });
 
   it('should reject invalid secret names', async () => {
-    await expect(store.set('invalid-name', 'value')).rejects.toThrow('Invalid secret name');
+    await expect(store.set('invalid name', 'value')).rejects.toThrow('Invalid secret name');
+    await expect(store.set('invalid.name', 'value')).rejects.toThrow('Invalid secret name');
     await expect(store.set('123INVALID', 'value')).rejects.toThrow('Invalid secret name');
     // Valid names should not throw
     await store.set('VALID_NAME', 'value');
     await store.set('VALID-NAME', 'value');
+    await store.set('valid-name', 'value');
     expect(await store.get('VALID_NAME')).toBe('value');
     expect(await store.get('VALID-NAME')).toBe('value');
+    expect(await store.get('valid-name')).toBe('value');
   });
 });

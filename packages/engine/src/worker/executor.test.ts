@@ -33,7 +33,7 @@ describe('WorkflowTaskExecutor', () => {
     const workItem: WorkItem = {
       id: 'test-work-item',
       payload: {
-        type: 'test/plugin.action',
+        type: 'builtin-task',
         inputs: {
           url: 'https://api.example.com?key={{ secrets.API_KEY }}',
           other: 'normal-value'
@@ -53,7 +53,7 @@ describe('WorkflowTaskExecutor', () => {
     const workItem: WorkItem = {
       id: 'test-work-item',
       payload: {
-        type: 'test/plugin.action',
+        type: 'builtin-task',
         inputs: {
           simple: 'value'
         }

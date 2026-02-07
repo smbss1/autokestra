@@ -38,7 +38,7 @@ describe('validateWorkflow', () => {
       source: { filePath: 'test.yaml' },
     };
 
-    await expect(validateWorkflow(workflow, { secretStore })).resolves.not.toThrow();
+    await expect(validateWorkflow(workflow, { secretStore })).resolves.toBeUndefined();
   });
 
   it('should fail validation for workflow with missing secret', async () => {
@@ -76,7 +76,7 @@ describe('validateWorkflow', () => {
         source: { filePath: 'test.yaml' },
       };
 
-      await expect(validateWorkflow(workflow, { secretStore })).resolves.not.toThrow();
+      await expect(validateWorkflow(workflow, { secretStore })).resolves.toBeUndefined();
     } finally {
       process.env.ENV_SECRET = originalEnv;
     }
@@ -95,6 +95,6 @@ describe('validateWorkflow', () => {
       source: { filePath: 'test.yaml' },
     };
 
-    await expect(validateWorkflow(workflow, { secretStore })).resolves.not.toThrow();
+    await expect(validateWorkflow(workflow, { secretStore })).resolves.toBeUndefined();
   });
 });

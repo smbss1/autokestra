@@ -211,13 +211,13 @@ describe('SQLiteStateStore', () => {
 
       await store.updateTaskRun(taskRun);
 
+      const retrieved = await store.getTaskRun('exec1', 'task1');
       expect(retrieved?.state).toBe(TaskRunState.RUNNING);
     });
 
     it('should list task runs for an execution', async () => {
       await store.createTaskRun(createInitialTaskRun('exec1', 'task1'));
       await store.createTaskRun(createInitialTaskRun('exec1', 'task2'));
-      expect(retrieved?.logEntryCount).toBe(5);
       await store.createTaskRun(createInitialTaskRun('exec1', 'task3'));
 
       const results = await store.listTaskRuns({ executionId: 'exec1' });
@@ -259,24 +259,6 @@ describe('SQLiteStateStore', () => {
           taskRunId: 'exec1:task1',
           attemptNumber: i,
           timestamps: {
-
-    it('should persist task run debug fields', async () => {
-      const taskRun = createInitialTaskRun('exec1', 'task1');
-      taskRun.inputs = { apiKey: '***MASKED***', value: 'ok' };
-      taskRun.outputs = { result: 'success' };
-      taskRun.error = { message: 'none' };
-      taskRun.durationMs = 1234;
-      taskRun.metadata = { taskType: 'test' };
-
-      await store.createTaskRun(taskRun);
-
-      const retrieved = await store.getTaskRun('exec1', 'task1');
-      expect(retrieved?.inputs).toEqual({ apiKey: '***MASKED***', value: 'ok' });
-      expect(retrieved?.outputs).toEqual({ result: 'success' });
-      expect(retrieved?.error).toEqual({ message: 'none' });
-      expect(retrieved?.durationMs).toBe(1234);
-      expect(retrieved?.metadata).toEqual({ taskType: 'test' });
-    });
             createdAt: new Date(),
             updatedAt: new Date(),
           },
@@ -287,6 +269,28 @@ describe('SQLiteStateStore', () => {
       expect(attempts.length).toBe(3);
       expect(attempts[0].attemptNumber).toBe(1);
       expect(attempts[2].attemptNumber).toBe(3);
+    });
+
+    it('should persist task run debug fields', async () => {
+      const taskRun = await store.getTaskRun('exec1', 'task1');
+      expect(taskRun).not.toBeNull();
+      if (!taskRun) return;
+
+      taskRun.inputs = { apiKey: '***MASKED***', value: 'ok' };
+      taskRun.outputs = { result: 'success' };
+      taskRun.error = { message: 'none' };
+      taskRun.durationMs = 1234;
+      taskRun.metadata = { taskType: 'test' };
+      taskRun.timestamps.updatedAt = new Date();
+
+      await store.updateTaskRun(taskRun);
+
+      const retrieved = await store.getTaskRun('exec1', 'task1');
+      expect(retrieved?.inputs).toEqual({ apiKey: '***MASKED***', value: 'ok' });
+      expect(retrieved?.outputs).toEqual({ result: 'success' });
+      expect(retrieved?.error).toEqual({ message: 'none' });
+      expect(retrieved?.durationMs).toBe(1234);
+      expect(retrieved?.metadata).toEqual({ taskType: 'test' });
     });
   });
 

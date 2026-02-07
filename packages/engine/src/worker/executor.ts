@@ -49,6 +49,12 @@ export class WorkflowTaskExecutor implements TaskExecutor {
 
     const maskedInputs = this.maskSecrets(payload.inputs || {});
 
+    // Resolve secret templates in inputs (applies to both plugin and built-in tasks).
+    let resolvedInputs = payload.inputs || {};
+    if (this.secretResolver) {
+      resolvedInputs = this.secretResolver.resolve(resolvedInputs, payload.allowedSecrets);
+    }
+
     // Log task start
     this.logCollector?.log({
       executionId,
@@ -73,12 +79,6 @@ export class WorkflowTaskExecutor implements TaskExecutor {
         }
         const [namespace, pluginAction] = payload.type.split('/');
         const [pluginName, actionName] = pluginAction.split('.');
-
-        // Resolve secret templates in inputs
-        let resolvedInputs = payload.inputs || {};
-        if (this.secretResolver) {
-          resolvedInputs = this.secretResolver.resolve(resolvedInputs, payload.allowedSecrets);
-        }
 
         const result = await this.pluginExecutor.execute(
           namespace,
@@ -121,6 +121,11 @@ export class WorkflowTaskExecutor implements TaskExecutor {
       } else {
         // Handle built-in tasks
         const duration = Date.now() - start;
+
+        // For built-in tasks we currently don't execute anything, but we still
+        // validate/resolve inputs so secret templates behave consistently.
+        void resolvedInputs;
+
         // Log task completion
         this.logCollector?.log({
           executionId,
