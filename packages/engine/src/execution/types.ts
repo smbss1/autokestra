@@ -27,6 +27,7 @@ export type ReasonCode =
   | 'BACKOFF'
   | 'RESOURCE_UNAVAILABLE'
   | 'EXTERNAL_EVENT'
+  | 'CRASH_RECOVERY'
   | 'SUCCESS'
   | 'ERROR'
   | 'UNKNOWN';

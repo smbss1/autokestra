@@ -12,6 +12,8 @@ storage:
   type: "sqlite"
   # For SQLite: path to database file
   path: "./data/db.sqlite"
+  # Optional: retention period in days for completed executions (default: 30)
+  retentionDays: 30
   # For PostgreSQL: connection details
   # host: "localhost"
   # port: 5432

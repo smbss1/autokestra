@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
+import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
 
 const VERSION = "0.0.1";
+const DEFAULT_DB_PATH = './autokestra.db';
 
 // Exit codes
 const EXIT_SUCCESS = 0;
@@ -86,14 +88,91 @@ program
   .addCommand(
     new Command('list')
       .description('list executions')
+      .option('--workflow <id>', 'filter by workflow ID')
+      .option('--state <state>', 'filter by state')
+      .option('--limit <number>', 'limit results', '20')
+      .option('--offset <number>', 'offset for pagination', '0')
       .option('--json', 'output in JSON format')
-      .action((options) => {
-        if (options.json) {
-          console.log(JSON.stringify({ executions: [] }, null, 2));
-        } else {
-          console.log('No executions found');
+      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .action(async (options) => {
+        try {
+          await listExecutions(
+            { dbPath: options.db },
+            {
+              workflowId: options.workflow,
+              state: options.state,
+              limit: parseInt(options.limit),
+              offset: parseInt(options.offset),
+              json: options.json,
+            }
+          );
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error listing executions:', error);
+          process.exit(EXIT_ERROR);
         }
-        process.exit(EXIT_SUCCESS);
+      })
+  )
+  .addCommand(
+    new Command('inspect')
+      .description('inspect an execution')
+      .argument('<executionId>', 'execution ID to inspect')
+      .option('--json', 'output in JSON format')
+      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .action(async (executionId, options) => {
+        try {
+          await inspectExecution({ dbPath: options.db }, executionId, {
+            json: options.json,
+          });
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error inspecting execution:', error);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('logs')
+      .description('get execution logs')
+      .argument('<executionId>', 'execution ID')
+      .option('--json', 'output in JSON format')
+      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .action(async (executionId, options) => {
+        try {
+          await getExecutionLogs({ dbPath: options.db }, executionId, {
+            json: options.json,
+          });
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error getting logs:', error);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('cleanup')
+      .description('clean up old executions')
+      .option('--days <number>', 'retention period in days', '30')
+      .option('--state <state>', 'execution state to clean up (can be specified multiple times)', (value, previous) => previous.concat([value]), [])
+      .option('--dry-run', 'show what would be deleted without actually deleting')
+      .option('--json', 'output in JSON format')
+      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .action(async (options) => {
+        try {
+          await cleanupExecutions(
+            { dbPath: options.db },
+            {
+              days: parseInt(options.days),
+              states: options.state.length > 0 ? options.state : undefined,
+              dryRun: options.dryRun,
+              json: options.json,
+            }
+          );
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error cleaning up executions:', error);
+          process.exit(EXIT_ERROR);
+        }
       })
   );
 

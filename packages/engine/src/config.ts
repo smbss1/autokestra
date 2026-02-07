@@ -8,6 +8,7 @@ export interface ServerConfig {
 export interface SqliteStorageConfig {
   type: 'sqlite';
   path: string;
+  retentionDays?: number;
 }
 
 export interface PostgresqlStorageConfig {
@@ -17,6 +18,7 @@ export interface PostgresqlStorageConfig {
   database: string;
   username?: string;
   password?: string;
+  retentionDays?: number;
 }
 
 export type StorageConfig = SqliteStorageConfig | PostgresqlStorageConfig;
@@ -41,6 +43,7 @@ export const DEFAULT_CONFIG: Config = {
   storage: {
     type: 'sqlite',
     path: './data/db.sqlite',
+    retentionDays: 30,
   },
   execution: {
     maxConcurrentWorkflows: 10,
@@ -58,6 +61,7 @@ export const serverConfigSchema = object({
 export const sqliteStorageSchema = object({
   type: literal('sqlite'),
   path: string(),
+  retentionDays: optional(pipe(number(), minValue(1))),
 });
 
 export const postgresqlStorageSchema = object({
@@ -67,6 +71,7 @@ export const postgresqlStorageSchema = object({
   database: string(),
   username: optional(string()),
   password: optional(string()),
+  retentionDays: optional(pipe(number(), minValue(1))),
 });
 
 export const storageConfigSchema = union([sqliteStorageSchema, postgresqlStorageSchema]);
@@ -97,6 +102,7 @@ export const envStorageOverrideSchema = object({
   database: optional(string()),
   username: optional(string()),
   password: optional(string()),
+  retentionDays: optional(pipe(number(), minValue(1))),
 });
 
 export const envExecutionOverrideSchema = object({

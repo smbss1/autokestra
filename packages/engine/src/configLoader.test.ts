@@ -194,5 +194,22 @@ execution:
 
       expect(() => loadConfigFromFile(tempFile)).toThrow(ConfigValidationError);
     });
+
+    it('should throw ConfigValidationError for negative retention days', () => {
+      const configYaml = `
+server:
+  port: 8080
+storage:
+  type: sqlite
+  path: ./test.db
+  retentionDays: -1
+execution:
+  maxConcurrentWorkflows: 5
+  maxConcurrentTasks: 10
+`;
+      writeFileSync(tempFile, configYaml);
+
+      expect(() => loadConfigFromFile(tempFile)).toThrow(ConfigValidationError);
+    });
   });
 });
