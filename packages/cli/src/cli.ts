@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
+import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
 
 const VERSION = "0.0.1";
 const DEFAULT_DB_PATH = './autokestra.db';
@@ -238,6 +239,68 @@ program
       .action(() => {
         console.error('Config set - not yet implemented');
         process.exit(EXIT_ERROR);
+      })
+  );
+
+program
+  .command('secrets')
+  .description('manage secrets')
+  .addCommand(
+    new Command('set')
+      .description('set a secret value')
+      .argument('<name>', 'secret name')
+      .argument('[value]', 'secret value (prompt if not provided)')
+      .action(async (name, value) => {
+        try {
+          await setSecret(name, value);
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error setting secret:', error);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('get')
+      .description('get a secret value')
+      .argument('<name>', 'secret name')
+      .action(async (name) => {
+        try {
+          await getSecret(name);
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error getting secret:', error);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('list secrets')
+      .option('--json', 'output in JSON format')
+      .action(async (options) => {
+        try {
+          await listSecrets({ json: options.json });
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error listing secrets:', error);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('delete')
+      .description('delete a secret')
+      .argument('<name>', 'secret name')
+      .option('--force', 'skip confirmation prompt')
+      .action(async (name, options) => {
+        try {
+          await deleteSecret(name, { force: options.force });
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error deleting secret:', error);
+          process.exit(EXIT_ERROR);
+        }
       })
   );
 

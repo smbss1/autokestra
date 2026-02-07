@@ -59,6 +59,7 @@ export const workflowSchema = object({
   id: pipe(string(), minLength(1)),
   enabled: optional(boolean()),
   trigger: optional(triggerSchema),
+  secrets: optional(array(pipe(string(), minLength(1)))),
   tasks: array(taskSchema),
   apiVersion: optional(pipe(string(), minLength(1))),
   version: optional(pipe(string(), minLength(1))),
@@ -130,6 +131,7 @@ export function normalizeWorkflow(parsed: any, filePath: string): Workflow {
     id: parsed.id,
     enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : true,
     trigger,
+    secrets: Array.isArray(parsed.secrets) ? parsed.secrets : undefined,
     tasks,
     source: { filePath },
   };

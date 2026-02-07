@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@autokestra/plugin-runtime": "workspace:*",
+    "@autokestra/secrets": "workspace:*",
     "valibot": "^1.2.0",
     "yaml": "^2.8.2"
   },

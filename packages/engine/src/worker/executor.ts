@@ -3,17 +3,20 @@
 import { TaskExecutor } from './interfaces';
 import { WorkItem, WorkResult } from './types';
 import { PluginExecutor, PluginManager, ProcessRuntime, WorkflowPermissions } from '@autokestra/plugin-runtime';
+import type { SecretResolver } from '@autokestra/secrets';
 
 export class WorkflowTaskExecutor implements TaskExecutor {
   private pluginExecutor?: PluginExecutor;
+  private secretResolver?: SecretResolver;
 
-  constructor(pluginConfig?: any) {
+  constructor(pluginConfig?: any, secretResolver?: SecretResolver) {
     if (pluginConfig) {
       const manager = new PluginManager(pluginConfig);
       const runtime = new ProcessRuntime(); // Default to trusted
       const permissions: WorkflowPermissions = { security: 'trusted' };
       this.pluginExecutor = new PluginExecutor(manager, runtime, permissions);
     }
+    this.secretResolver = secretResolver;
   }
 
   async execute(workItem: WorkItem, signal: AbortSignal): Promise<WorkResult> {
@@ -27,12 +30,19 @@ export class WorkflowTaskExecutor implements TaskExecutor {
       }
       const [namespace, pluginAction] = payload.type.split('/');
       const [pluginName, actionName] = pluginAction.split('.');
+
+      // Resolve secret templates in inputs
+      let resolvedInputs = payload.inputs || {};
+      if (this.secretResolver) {
+        resolvedInputs = this.secretResolver.resolve(resolvedInputs, payload.allowedSecrets);
+      }
+
       try {
         const result = await this.pluginExecutor.execute(
           namespace,
           pluginName,
           actionName,
-          payload.inputs || {},
+          resolvedInputs,
           { secrets: {}, vars: {}, env: process.env }
         );
         return {

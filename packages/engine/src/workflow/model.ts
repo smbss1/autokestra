@@ -34,6 +34,7 @@ export interface Workflow {
   id: string;
   enabled: boolean;
   trigger?: WorkflowTrigger;
+  secrets?: string[];
   tasks: WorkflowTask[];
   source: WorkflowSource;
 }
