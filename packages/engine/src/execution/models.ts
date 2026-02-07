@@ -9,6 +9,7 @@ export interface Execution {
   reasonCode?: ReasonCode;
   message?: string;
   metadata?: Record<string, any>;
+  logEntryCount?: number;
 }
 
 // Log metrics for execution metadata
@@ -37,6 +38,11 @@ export interface TaskRun {
   timestamps: Timestamps;
   reasonCode?: ReasonCode;
   message?: string;
+  inputs?: Record<string, any>;
+  outputs?: Record<string, any>;
+  error?: Record<string, any>;
+  durationMs?: number;
+  metadata?: Record<string, any>;
 }
 
 // Log metrics for task run metadata
@@ -72,6 +78,7 @@ export function createInitialExecution(workflowId: string, executionId: string):
       createdAt: now,
       updatedAt: now,
     },
+    logEntryCount: 0,
   };
 }
 
@@ -85,5 +92,10 @@ export function createInitialTaskRun(executionId: string, taskId: string): TaskR
       createdAt: now,
       updatedAt: now,
     },
+    durationMs: undefined,
+    inputs: undefined,
+    outputs: undefined,
+    error: undefined,
+    metadata: undefined,
   };
 }

@@ -75,10 +75,10 @@ Objectif : transformer le PRD en **milestones livrables** et en **epics découpa
 - Livrables : migrations, DAO/repositories, indexes, transactions.
 - Critères : reprise après crash; aucune corruption; perf acceptable sur machine modeste.
 
-### E1.6 — Plugin runtime WASM (sandbox) + SDK v1
+### E1.6 — Plugin runtime (sandbox) + SDK v1
 
-- Portée : exécuter des actions plugin en WASM; protocole d’IO (inputs/outputs), erreurs.
-- Livrables : runtime (wasmtime/wasmer), API host minimal (logger, clock, env virtuel).
+- Portée : exécuter des actions plugin; protocole d’IO (inputs/outputs), erreurs.
+- Livrables : runtime (process/docker), API host minimal (logger, clock, env virtuel).
 - Critères : pas d’exécution de code natif non approuvé; limites de mémoire/CPU configurables.
 
 ### E1.7 — Permissions v1 (deny by default)

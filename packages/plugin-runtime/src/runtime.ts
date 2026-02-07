@@ -67,7 +67,26 @@ export class ProcessRuntime implements PluginRuntime {
 
     const reader = stderr.getReader();
     const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
     let buffer = '';
+    let totalBytes = 0;
+    let truncated = false;
+    let warned = false;
+    const maxBytes = 10 * 1024 * 1024; // 10MB per task
+
+    const emitTruncationWarning = () => {
+      if (warned) return;
+      warned = true;
+      logContext.logCollector?.log({
+        executionId: logContext.executionId,
+        taskId: logContext.taskId,
+        timestamp: Date.now(),
+        level: 'WARN',
+        source: `plugin:${logContext.executionId}/${logContext.taskId}`,
+        message: 'Plugin log output exceeded 10MB; further output truncated',
+        metadata: { truncated: true },
+      });
+    };
 
     try {
       while (true) {
@@ -80,6 +99,16 @@ export class ProcessRuntime implements PluginRuntime {
 
         for (const line of lines) {
           if (line.trim()) {
+            if (truncated) {
+              continue;
+            }
+            const lineBytes = encoder.encode(line).byteLength;
+            totalBytes += lineBytes;
+            if (totalBytes > maxBytes) {
+              truncated = true;
+              emitTruncationWarning();
+              continue;
+            }
             this.parseAndLog(line.trim(), logContext);
           }
         }
@@ -87,7 +116,16 @@ export class ProcessRuntime implements PluginRuntime {
 
       // Process any remaining buffer
       if (buffer.trim()) {
-        this.parseAndLog(buffer.trim(), logContext);
+        if (!truncated) {
+          const lineBytes = encoder.encode(buffer).byteLength;
+          totalBytes += lineBytes;
+          if (totalBytes > maxBytes) {
+            truncated = true;
+            emitTruncationWarning();
+          } else {
+            this.parseAndLog(buffer.trim(), logContext);
+          }
+        }
       }
     } finally {
       reader.releaseLock();
@@ -193,7 +231,26 @@ export class DockerRuntime implements PluginRuntime {
 
     const reader = stderr.getReader();
     const decoder = new TextDecoder();
+    const encoder = new TextEncoder();
     let buffer = '';
+    let totalBytes = 0;
+    let truncated = false;
+    let warned = false;
+    const maxBytes = 10 * 1024 * 1024; // 10MB per task
+
+    const emitTruncationWarning = () => {
+      if (warned) return;
+      warned = true;
+      logContext.logCollector?.log({
+        executionId: logContext.executionId,
+        taskId: logContext.taskId,
+        timestamp: Date.now(),
+        level: 'WARN',
+        source: `plugin:${logContext.executionId}/${logContext.taskId}`,
+        message: 'Plugin log output exceeded 10MB; further output truncated',
+        metadata: { truncated: true },
+      });
+    };
 
     try {
       while (true) {
@@ -206,6 +263,16 @@ export class DockerRuntime implements PluginRuntime {
 
         for (const line of lines) {
           if (line.trim()) {
+            if (truncated) {
+              continue;
+            }
+            const lineBytes = encoder.encode(line).byteLength;
+            totalBytes += lineBytes;
+            if (totalBytes > maxBytes) {
+              truncated = true;
+              emitTruncationWarning();
+              continue;
+            }
             this.parseAndLog(line.trim(), logContext);
           }
         }
@@ -213,7 +280,16 @@ export class DockerRuntime implements PluginRuntime {
 
       // Process any remaining buffer
       if (buffer.trim()) {
-        this.parseAndLog(buffer.trim(), logContext);
+        if (!truncated) {
+          const lineBytes = encoder.encode(buffer).byteLength;
+          totalBytes += lineBytes;
+          if (totalBytes > maxBytes) {
+            truncated = true;
+            emitTruncationWarning();
+          } else {
+            this.parseAndLog(buffer.trim(), logContext);
+          }
+        }
       }
     } finally {
       reader.releaseLock();

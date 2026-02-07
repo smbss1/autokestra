@@ -70,6 +70,8 @@ export class LogCollector {
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
 
+        const executionCounts = new Map<string, number>();
+
         for (const entry of entriesToFlush) {
           stmt.run(
             entry.executionId,
@@ -80,6 +82,23 @@ export class LogCollector {
             entry.message,
             entry.metadata ? JSON.stringify(entry.metadata) : null
           );
+
+          executionCounts.set(
+            entry.executionId,
+            (executionCounts.get(entry.executionId) || 0) + 1
+          );
+        }
+
+        if (executionCounts.size > 0) {
+          const updateStmt = this.db.prepare(`
+            UPDATE executions
+            SET log_entry_count = COALESCE(log_entry_count, 0) + ?
+            WHERE execution_id = ?
+          `);
+
+          for (const [executionId, count] of executionCounts.entries()) {
+            updateStmt.run(count, executionId);
+          }
         }
       })();
     } catch (error) {

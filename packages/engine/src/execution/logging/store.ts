@@ -4,6 +4,7 @@ export interface LogQueryFilters {
   level?: string[]; // Array of log levels to include
   since?: number; // Duration in milliseconds to look back
   taskId?: string; // Filter by specific task
+  source?: string; // Filter by log source
 }
 
 export interface LogQueryOptions {
@@ -78,7 +79,12 @@ export class LogStore {
       params.push(filters.taskId);
     }
 
-    query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+    if (filters.source) {
+      query += ` AND source = ?`;
+      params.push(filters.source);
+    }
+
+    query += ` ORDER BY timestamp ASC, id ASC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const stmt = this.db.prepare(query);
@@ -127,7 +133,12 @@ export class LogStore {
       params.push(sinceTimestamp);
     }
 
-    query += ` ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+    if (filters.source) {
+      query += ` AND source = ?`;
+      params.push(filters.source);
+    }
+
+    query += ` ORDER BY timestamp ASC, id ASC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
     const stmt = this.db.prepare(query);
@@ -153,17 +164,54 @@ export class LogStore {
     filters: LogQueryFilters = {},
     pollIntervalMs: number = 100
   ): AsyncGenerator<LogEntry> {
-    let lastTimestamp = Date.now();
+    let lastTimestamp = filters.since ? Date.now() - filters.since : 0;
+    let lastId = 0;
 
     while (true) {
-      const logs = this.getLogsByExecution(executionId, {
-        ...filters,
-        since: Date.now() - lastTimestamp + 1, // Get logs since last check
-      });
+      let query = `
+        SELECT id, execution_id, task_id, timestamp, level, source, message, metadata
+        FROM execution_logs
+        WHERE execution_id = ?
+          AND (timestamp > ? OR (timestamp = ? AND id > ?))
+      `;
+      const params: any[] = [executionId, lastTimestamp, lastTimestamp, lastId];
+
+      if (filters.level && filters.level.length > 0) {
+        const placeholders = filters.level.map(() => '?').join(',');
+        query += ` AND level IN (${placeholders})`;
+        params.push(...filters.level);
+      }
+
+      if (filters.taskId) {
+        query += ` AND task_id = ?`;
+        params.push(filters.taskId);
+      }
+
+      if (filters.source) {
+        query += ` AND source = ?`;
+        params.push(filters.source);
+      }
+
+      query += ` ORDER BY timestamp ASC, id ASC LIMIT 1000`;
+
+      const stmt = this.db.prepare(query);
+      const rows = stmt.all(...params) as any[];
+
+      const logs = rows.map(row => ({
+        id: row.id,
+        executionId: row.execution_id,
+        taskId: row.task_id,
+        timestamp: row.timestamp,
+        level: row.level,
+        source: row.source,
+        message: row.message,
+        metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      }));
 
       for (const log of logs) {
         yield log;
-        lastTimestamp = Math.max(lastTimestamp, log.timestamp);
+        lastTimestamp = log.timestamp;
+        lastId = log.id;
       }
 
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));

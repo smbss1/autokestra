@@ -60,6 +60,13 @@ export class MigrationRunner {
       down: this.getLoggingTablesRollback(),
     });
 
+    migrations.push({
+      version: 3,
+      name: 'add_execution_taskrun_log_fields',
+      up: this.getExecutionTaskRunLogFieldsSchema(),
+      down: this.getExecutionTaskRunLogFieldsRollback(),
+    });
+
     return migrations.sort((a, b) => a.version - b.version);
   }
 
@@ -269,6 +276,24 @@ export class MigrationRunner {
       DROP INDEX IF EXISTS idx_logs_execution;
       DROP TABLE IF EXISTS execution_audit_events;
       DROP TABLE IF EXISTS execution_logs;
+    `;
+  }
+
+  private getExecutionTaskRunLogFieldsSchema(): string {
+    return `
+      ALTER TABLE executions ADD COLUMN log_entry_count INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE task_runs ADD COLUMN inputs TEXT;
+      ALTER TABLE task_runs ADD COLUMN outputs TEXT;
+      ALTER TABLE task_runs ADD COLUMN error TEXT;
+      ALTER TABLE task_runs ADD COLUMN duration_ms INTEGER;
+      ALTER TABLE task_runs ADD COLUMN metadata TEXT;
+    `;
+  }
+
+  private getExecutionTaskRunLogFieldsRollback(): string {
+    return `
+      -- SQLite does not support DROP COLUMN; recreate tables if rollback is required.
     `;
   }
 }

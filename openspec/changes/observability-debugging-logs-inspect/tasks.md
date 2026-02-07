@@ -30,7 +30,7 @@
 - [x] 4.1 Integrate LogCollector into WorkerPool task executor
 - [x] 4.2 Log task start (task_id, task type, masked inputs)
 - [x] 4.3 Log task completion (status, duration, outputs/errors)
-- [ ] 4.4 Log task retry attempts (attempt number, reason)
+- [x] 4.4 Log task retry attempts (attempt number, reason)
 - [x] 4.5 Add correlation IDs (execution_id + task_id) to all worker logs
 - [x] 4.6 Test worker logging (verify task logs have correct correlation)
 
@@ -40,7 +40,7 @@
 - [x] 5.2 Intercept plugin stderr in PluginExecutor
 - [x] 5.3 Parse stdout/stderr line-by-line and create log entries
 - [x] 5.4 Tag plugin logs with source=plugin:<namespace>/<plugin>.<action>
-- [ ] 5.5 Implement 10MB truncation limit per task with warning log
+- [x] 5.5 Implement 10MB truncation limit per task with warning log
 - [x] 5.6 Test plugin log capture (verify stdout/stderr captured correctly)
 
 ## 6. Audit Trail Implementation
@@ -66,65 +66,65 @@
 
 ## 8. Log Retrieval Query Layer
 
-- [ ] 8.1 Create LogStore class with query methods
-- [ ] 8.2 Implement getLogsByExecution(execution_id, filters) method
-- [ ] 8.3 Implement getLogsByTask(task_id, filters) method
-- [ ] 8.4 Support filters: level (array), since (duration), task_id
-- [ ] 8.5 Implement pagination (fetch in batches of 1000 rows)
-- [ ] 8.6 Add streaming query support (for --follow mode)
-- [ ] 8.7 Test log queries (verify indexes used, performance acceptable)
+- [x] 8.1 Create LogStore class with query methods
+- [x] 8.2 Implement getLogsByExecution(execution_id, filters) method
+- [x] 8.3 Implement getLogsByTask(task_id, filters) method
+- [x] 8.4 Support filters: level (array), since (duration), task_id
+- [x] 8.5 Implement pagination (fetch in batches of 1000 rows)
+- [x] 8.6 Add streaming query support (for --follow mode)
+- [x] 8.7 Test log queries (verify indexes used, performance acceptable)
 
 ## 9. CLI - workflow execution logs Command
 
-- [ ] 9.1 Add `workflow execution logs <execution-id>` command to CLI
-- [ ] 9.2 Implement basic log retrieval and display (timestamp, level, source, message)
-- [ ] 9.3 Add --task <task-id> filter support
-- [ ] 9.4 Add --level <level> filter support (accepts comma-separated levels)
-- [ ] 9.5 Add --since <duration> filter support (parse 5m, 2h, 1d formats)
-- [ ] 9.6 Add --follow flag for real-time streaming (poll every 100ms)
-- [ ] 9.7 Implement follow exit on execution completion
-- [ ] 9.8 Add --json flag for machine-readable output
-- [ ] 9.9 Implement log output formatting (color coding, timestamp formatting)
-- [ ] 9.10 Handle multi-line log messages (indent continuation lines)
-- [ ] 9.11 Add error handling (execution not found, invalid filters)
-- [ ] 9.12 Test CLI command (verify all flags work, output formats correct)
+- [x] 9.1 Add `workflow execution logs <execution-id>` command to CLI
+- [x] 9.2 Implement basic log retrieval and display (timestamp, level, source, message)
+- [x] 9.3 Add --task <task-id> filter support
+- [x] 9.4 Add --level <level> filter support (accepts comma-separated levels)
+- [x] 9.5 Add --since <duration> filter support (parse 5m, 2h, 1d formats)
+- [x] 9.6 Add --follow flag for real-time streaming (poll every 100ms)
+- [x] 9.7 Implement follow exit on execution completion
+- [x] 9.8 Add --json flag for machine-readable output
+- [x] 9.9 Implement log output formatting (color coding, timestamp formatting)
+- [x] 9.10 Handle multi-line log messages (indent continuation lines)
+- [x] 9.11 Add error handling (execution not found, invalid filters)
+- [x] 9.12 Test CLI command (verify all flags work, output formats correct)
 
 ## 10. Execution Inspection Query Layer
 
-- [ ] 10.1 Create ExecutionInspector class
-- [ ] 10.2 Implement getExecutionOverview(execution_id) method (metadata, status, timestamps)
-- [ ] 10.3 Implement getTaskDetails(execution_id) method (task list with status, duration)
-- [ ] 10.4 Implement getTaskInputsOutputs(task_id) method (with secrets masking)
-- [ ] 10.5 Implement getAuditTrail(execution_id) method
-- [ ] 10.6 Add timeline generation logic (task start/end times relative to execution)
-- [ ] 10.7 Test inspection queries (verify efficient joins, no N+1 queries)
+- [x] 10.1 Create ExecutionInspector class
+- [x] 10.2 Implement getExecutionOverview(execution_id) method (metadata, status, timestamps)
+- [x] 10.3 Implement getTaskDetails(execution_id) method (task list with status, duration)
+- [x] 10.4 Implement getTaskInputsOutputs(task_id) method (with secrets masking)
+- [x] 10.5 Implement getAuditTrail(execution_id) method
+- [x] 10.6 Add timeline generation logic (task start/end times relative to execution)
+- [x] 10.7 Test inspection queries (verify efficient joins, no N+1 queries)
 
 ## 11. CLI - workflow execution inspect Command
 
-- [ ] 11.1 Add `workflow execution inspect <execution-id>` command to CLI
-- [ ] 11.2 Display execution overview (workflow_id, status, duration, timestamps)
-- [ ] 11.3 Display task table (task_id, type, status, duration, start/end times)
-- [ ] 11.4 Add --show-inputs flag to display task inputs (with secrets masked)
-- [ ] 11.5 Display task outputs and errors for completed tasks
-- [ ] 11.6 Add --timeline flag for ASCII timeline visualization
-- [ ] 11.7 Implement timeline rendering (show task parallelism, duration labels)
-- [ ] 11.8 Add --audit flag to display audit event timeline
-- [ ] 11.9 Add --json flag for machine-readable output (includes all data)
-- [ ] 11.10 Handle running executions (show current state, mark running tasks)
-- [ ] 11.11 Implement output formatting (tables, color coding, human-readable durations)
-- [ ] 11.12 Add truncation for long values (--no-truncate flag to override)
-- [ ] 11.13 Test CLI command (verify all flags work, formats correct)
+- [x] 11.1 Add `workflow execution inspect <execution-id>` command to CLI
+- [x] 11.2 Display execution overview (workflow_id, status, duration, timestamps)
+- [x] 11.3 Display task table (task_id, type, status, duration, start/end times)
+- [x] 11.4 Add --show-inputs flag to display task inputs (with secrets masked)
+- [x] 11.5 Display task outputs and errors for completed tasks
+- [x] 11.6 Add --timeline flag for ASCII timeline visualization
+- [x] 11.7 Implement timeline rendering (show task parallelism, duration labels)
+- [x] 11.8 Add --audit flag to display audit event timeline
+- [x] 11.9 Add --json flag for machine-readable output (includes all data)
+- [x] 11.10 Handle running executions (show current state, mark running tasks)
+- [x] 11.11 Implement output formatting (tables, color coding, human-readable durations)
+- [x] 11.12 Add truncation for long values (--no-truncate flag to override)
+- [x] 11.13 Test CLI command (verify all flags work, formats correct)
 
 ## 12. Execution Data Model Updates
 
-- [ ] 12.1 Add log_entry_count field to Execution model
-- [ ] 12.2 Update log_entry_count on log writes
-- [ ] 12.3 Add inputs, outputs, error fields to TaskRun model (JSON storage)
-- [ ] 12.4 Store masked inputs on task start
-- [ ] 12.5 Store outputs on task success
-- [ ] 12.6 Store error details on task failure
-- [ ] 12.7 Calculate and store duration_ms on task completion
-- [ ] 12.8 Test data model updates (verify fields populated correctly)
+- [x] 12.1 Add log_entry_count field to Execution model
+- [x] 12.2 Update log_entry_count on log writes
+- [x] 12.3 Add inputs, outputs, error fields to TaskRun model (JSON storage)
+- [x] 12.4 Store masked inputs on task start
+- [x] 12.5 Store outputs on task success
+- [x] 12.6 Store error details on task failure
+- [x] 12.7 Calculate and store duration_ms on task completion
+- [x] 12.8 Test data model updates (verify fields populated correctly)
 
 ## 13. Lifecycle Controls Log Integration
 
@@ -151,11 +151,11 @@
 - [x] 15.2 Test: retrieve logs via CLI for completed execution
 - [x] 15.3 Test: stream logs for running execution (--follow)
 - [x] 15.4 Test: inspect execution with multiple tasks
-- [ ] 15.5 Test: plugin stdout/stderr captured correctly
-- [ ] 15.6 Test: audit trail shows all lifecycle events
-- [ ] 15.7 Test: log retention cleanup deletes old logs
-- [ ] 15.8 Test: filtering works (task, level, since)
-- [ ] 15.9 Test: JSON output format for logs and inspect
+- [x] 15.5 Test: plugin stdout/stderr captured correctly
+- [x] 15.6 Test: audit trail shows all lifecycle events
+- [x] 15.7 Test: log retention cleanup deletes old logs
+- [x] 15.8 Test: filtering works (task, level, since)
+- [x] 15.9 Test: JSON output format for logs and inspect
 - [x] 15.10 Test: secrets masked in task inputs
 
 ## 16. Documentation

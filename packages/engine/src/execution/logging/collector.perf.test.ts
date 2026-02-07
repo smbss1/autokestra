@@ -22,6 +22,31 @@ describe('LogCollector Performance', () => {
       )
     `);
 
+    db.exec(`
+      CREATE TABLE executions (
+        execution_id TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        state TEXT NOT NULL,
+        reason_code TEXT,
+        message TEXT,
+        metadata TEXT,
+        log_entry_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        started_at TEXT,
+        ended_at TEXT,
+        updated_at TEXT NOT NULL
+      )
+    `);
+
+    const insertExecution = db.prepare(`
+      INSERT INTO executions (execution_id, workflow_id, state, created_at, updated_at)
+      VALUES (?, ?, ?, datetime('now'), datetime('now'))
+    `);
+
+    for (let i = 0; i < 10; i++) {
+      insertExecution.run(`exec-${i}`, 'wf-1', 'PENDING');
+    }
+
     // Use larger buffer for performance test
     collector = new LogCollector({ db, maxBufferSize: 1000, flushIntervalMs: 1000 });
   });

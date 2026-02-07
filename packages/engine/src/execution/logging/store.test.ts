@@ -57,10 +57,10 @@ describe('LogStore', () => {
 
     expect(logs.length).toBe(2);
     expect(logs[0].executionId).toBe('exec-1');
-    expect(logs[0].taskId).toBe('task-2'); // Should be ordered by timestamp DESC
-    expect(logs[0].level).toBe('ERROR');
-    expect(logs[1].taskId).toBe('task-1');
-    expect(logs[1].level).toBe('INFO');
+    expect(logs[0].taskId).toBe('task-1'); // Should be ordered by timestamp ASC
+    expect(logs[0].level).toBe('INFO');
+    expect(logs[1].taskId).toBe('task-2');
+    expect(logs[1].level).toBe('ERROR');
     expect(logs[1].metadata).toEqual({ key: 'value' });
   });
 
@@ -138,8 +138,8 @@ describe('LogStore', () => {
     const logs = logStore.getLogsByTask('task-1');
 
     expect(logs.length).toBe(2);
-    expect(logs[0].executionId).toBe('exec-2'); // Ordered by timestamp DESC
-    expect(logs[1].executionId).toBe('exec-1');
+    expect(logs[0].executionId).toBe('exec-1'); // Ordered by timestamp ASC
+    expect(logs[1].executionId).toBe('exec-2');
   });
 
   it('should get audit trail', () => {
@@ -179,9 +179,9 @@ describe('LogStore', () => {
 
     expect(firstPage.length).toBe(2);
     expect(secondPage.length).toBe(2);
-    expect(firstPage[0].message).toBe('Log 4'); // DESC order
-    expect(firstPage[1].message).toBe('Log 3');
+    expect(firstPage[0].message).toBe('Log 0'); // ASC order
+    expect(firstPage[1].message).toBe('Log 1');
     expect(secondPage[0].message).toBe('Log 2');
-    expect(secondPage[1].message).toBe('Log 1');
+    expect(secondPage[1].message).toBe('Log 3');
   });
 });

@@ -54,11 +54,13 @@ describe('MigrationRunner', () => {
     await runner.runPendingMigrations(db);
 
     const status = runner.getStatus(db);
-    expect(status.length).toBe(2);
+    expect(status.length).toBe(3);
     expect(status[0].version).toBe(1);
     expect(status[0].name).toBe('initial_schema');
     expect(status[1].version).toBe(2);
     expect(status[1].name).toBe('add_logging_tables');
+    expect(status[2].version).toBe(3);
+    expect(status[2].name).toBe('add_execution_taskrun_log_fields');
   });
 
   it('should not re-apply already applied migrations', async () => {

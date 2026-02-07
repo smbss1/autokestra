@@ -152,7 +152,7 @@ export class SQLiteStateStore implements StateStore {
     const db = this.getDb();
     const stmt = db.prepare(`
       INSERT INTO executions (
-        execution_id, workflow_id, state, reason_code, message, metadata,
+        execution_id, workflow_id, state, reason_code, message, metadata, log_entry_count,
         created_at, started_at, ended_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
@@ -164,6 +164,7 @@ export class SQLiteStateStore implements StateStore {
       execution.reasonCode || null,
       execution.message || null,
       execution.metadata ? JSON.stringify(execution.metadata) : null,
+      execution.logEntryCount ?? 0,
       execution.timestamps.createdAt.toISOString(),
       execution.timestamps.startedAt?.toISOString() || null,
       execution.timestamps.endedAt?.toISOString() || null,
@@ -179,6 +180,7 @@ export class SQLiteStateStore implements StateStore {
         reason_code = ?,
         message = ?,
         metadata = ?,
+        log_entry_count = ?,
         started_at = ?,
         ended_at = ?,
         updated_at = ?
@@ -190,6 +192,7 @@ export class SQLiteStateStore implements StateStore {
       execution.reasonCode || null,
       execution.message || null,
       execution.metadata ? JSON.stringify(execution.metadata) : null,
+      execution.logEntryCount ?? 0,
       execution.timestamps.startedAt?.toISOString() || null,
       execution.timestamps.endedAt?.toISOString() || null,
       execution.timestamps.updatedAt.toISOString(),
@@ -211,6 +214,7 @@ export class SQLiteStateStore implements StateStore {
       reasonCode: row.reason_code,
       message: row.message,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      logEntryCount: row.log_entry_count ?? 0,
       timestamps: {
         createdAt: new Date(row.created_at),
         startedAt: row.started_at ? new Date(row.started_at) : undefined,
@@ -275,6 +279,7 @@ export class SQLiteStateStore implements StateStore {
       reasonCode: row.reason_code,
       message: row.message,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      logEntryCount: row.log_entry_count ?? 0,
       timestamps: {
         createdAt: new Date(row.created_at),
         startedAt: row.started_at ? new Date(row.started_at) : undefined,
@@ -292,8 +297,9 @@ export class SQLiteStateStore implements StateStore {
     const stmt = db.prepare(`
       INSERT INTO task_runs (
         execution_id, task_id, state, reason_code, message,
+        inputs, outputs, error, duration_ms, metadata,
         created_at, started_at, ended_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -302,6 +308,11 @@ export class SQLiteStateStore implements StateStore {
       taskRun.state,
       taskRun.reasonCode || null,
       taskRun.message || null,
+      taskRun.inputs ? JSON.stringify(taskRun.inputs) : null,
+      taskRun.outputs ? JSON.stringify(taskRun.outputs) : null,
+      taskRun.error ? JSON.stringify(taskRun.error) : null,
+      taskRun.durationMs ?? null,
+      taskRun.metadata ? JSON.stringify(taskRun.metadata) : null,
       taskRun.timestamps.createdAt.toISOString(),
       taskRun.timestamps.startedAt?.toISOString() || null,
       taskRun.timestamps.endedAt?.toISOString() || null,
@@ -316,6 +327,11 @@ export class SQLiteStateStore implements StateStore {
         state = ?,
         reason_code = ?,
         message = ?,
+        inputs = ?,
+        outputs = ?,
+        error = ?,
+        duration_ms = ?,
+        metadata = ?,
         started_at = ?,
         ended_at = ?,
         updated_at = ?
@@ -326,6 +342,11 @@ export class SQLiteStateStore implements StateStore {
       taskRun.state,
       taskRun.reasonCode || null,
       taskRun.message || null,
+      taskRun.inputs ? JSON.stringify(taskRun.inputs) : null,
+      taskRun.outputs ? JSON.stringify(taskRun.outputs) : null,
+      taskRun.error ? JSON.stringify(taskRun.error) : null,
+      taskRun.durationMs ?? null,
+      taskRun.metadata ? JSON.stringify(taskRun.metadata) : null,
       taskRun.timestamps.startedAt?.toISOString() || null,
       taskRun.timestamps.endedAt?.toISOString() || null,
       taskRun.timestamps.updatedAt.toISOString(),
@@ -347,6 +368,11 @@ export class SQLiteStateStore implements StateStore {
       state: row.state as TaskRunState,
       reasonCode: row.reason_code,
       message: row.message,
+      inputs: row.inputs ? JSON.parse(row.inputs) : undefined,
+      outputs: row.outputs ? JSON.parse(row.outputs) : undefined,
+      error: row.error ? JSON.parse(row.error) : undefined,
+      durationMs: row.duration_ms ?? undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       timestamps: {
         createdAt: new Date(row.created_at),
         startedAt: row.started_at ? new Date(row.started_at) : undefined,
@@ -403,6 +429,11 @@ export class SQLiteStateStore implements StateStore {
       state: row.state as TaskRunState,
       reasonCode: row.reason_code,
       message: row.message,
+      inputs: row.inputs ? JSON.parse(row.inputs) : undefined,
+      outputs: row.outputs ? JSON.parse(row.outputs) : undefined,
+      error: row.error ? JSON.parse(row.error) : undefined,
+      durationMs: row.duration_ms ?? undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
       timestamps: {
         createdAt: new Date(row.created_at),
         startedAt: row.started_at ? new Date(row.started_at) : undefined,
@@ -484,6 +515,7 @@ export class SQLiteStateStore implements StateStore {
       reasonCode: row.reason_code,
       message: row.message,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      logEntryCount: row.log_entry_count ?? 0,
       timestamps: {
         createdAt: new Date(row.created_at),
         startedAt: row.started_at ? new Date(row.started_at) : undefined,
@@ -510,6 +542,7 @@ export class SQLiteStateStore implements StateStore {
       reasonCode: row.reason_code,
       message: row.message,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+      logEntryCount: row.log_entry_count ?? 0,
       timestamps: {
         createdAt: new Date(row.created_at),
         startedAt: row.started_at ? new Date(row.started_at) : undefined,

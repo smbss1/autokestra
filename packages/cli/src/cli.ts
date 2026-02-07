@@ -170,20 +170,22 @@ program
     new Command('inspect')
       .description('inspect an execution')
       .argument('<executionId>', 'execution ID to inspect')
-      .option('--with-logs', 'include recent logs in output')
-      .option('--with-audit', 'include audit trail in output')
-      .option('--logs-limit <number>', 'limit number of logs to include', '10')
+      .option('--show-inputs', 'display task inputs (masked)')
+      .option('--timeline', 'display ASCII timeline')
+      .option('--audit', 'include audit trail in output')
       .option('--json', 'output in JSON format')
       .option('--pretty', 'pretty print JSON output')
+      .option('--no-truncate', 'disable truncation of long values')
       .option('--db <path>', 'database path', DEFAULT_DB_PATH)
       .action(async (executionId, options) => {
         try {
           await inspectExecution({ dbPath: options.db }, executionId, {
-            withLogs: options.withLogs,
-            withAudit: options.withAudit,
-            logsLimit: parseInt(options.logsLimit),
+            showInputs: options.showInputs,
+            timeline: options.timeline,
+            audit: options.audit,
             json: options.json,
             pretty: options.pretty,
+            noTruncate: options.truncate === false,
           });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
@@ -196,13 +198,9 @@ program
     new Command('logs')
       .description('get execution logs')
       .argument('<executionId>', 'execution ID')
-      .option('--level <level>', 'filter by log level (DEBUG, INFO, WARN, ERROR)', (value, previous) => previous.concat([value]), [])
+      .option('--level <levels>', 'filter by log level (DEBUG, INFO, WARN, ERROR; comma-separated)')
       .option('--since <duration>', 'show logs from last N minutes/hours/days (e.g., 5m, 2h, 1d)')
-      .option('--task-id <taskId>', 'filter by task ID')
-      .option('--source <source>', 'filter by log source (scheduler, worker, plugin)')
-      .option('--grep <pattern>', 'filter logs containing pattern')
-      .option('--limit <number>', 'limit number of log entries', '100')
-      .option('--offset <number>', 'offset for pagination', '0')
+      .option('--task <taskId>', 'filter by task ID')
       .option('--follow', 'stream logs in real-time')
       .option('--json', 'output in JSON format')
       .option('--pretty', 'pretty print JSON output')
@@ -210,13 +208,9 @@ program
       .action(async (executionId, options) => {
         try {
           await getExecutionLogs({ dbPath: options.db }, executionId, {
-            level: options.level.length > 0 ? options.level : undefined,
+            level: options.level ? [options.level] : undefined,
             since: options.since,
-            taskId: options.taskId,
-            source: options.source,
-            grep: options.grep,
-            limit: parseInt(options.limit),
-            offset: parseInt(options.offset),
+            taskId: options.task,
             follow: options.follow,
             json: options.json,
             pretty: options.pretty,

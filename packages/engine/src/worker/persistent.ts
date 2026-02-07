@@ -45,13 +45,29 @@ export class PersistentTaskExecutor {
   }
 
   /**
+   * Store masked inputs when a task run starts
+   */
+  async storeTaskRunInputs(executionId: string, taskId: string, inputs: Record<string, any>): Promise<void> {
+    const taskRun = await this.config.stateStore.getTaskRun(executionId, taskId);
+    if (!taskRun) {
+      throw new Error(`TaskRun ${executionId}:${taskId} not found`);
+    }
+
+    taskRun.inputs = inputs;
+    taskRun.timestamps.updatedAt = new Date();
+
+    await this.config.stateStore.updateTaskRun(taskRun);
+  }
+
+  /**
    * Complete a task run with a final state
    */
   async completeTaskRun(
     executionId: string,
     taskId: string,
     finalState: TaskRunState.SUCCESS | TaskRunState.FAILED | TaskRunState.CANCELLED,
-    error?: string
+    error?: string,
+    outputs?: Record<string, any>
   ): Promise<void> {
     const taskRun = await this.config.stateStore.getTaskRun(executionId, taskId);
     if (!taskRun) {
@@ -62,8 +78,18 @@ export class PersistentTaskExecutor {
     taskRun.timestamps.endedAt = new Date();
     taskRun.timestamps.updatedAt = new Date();
 
+    const startTime = taskRun.timestamps.startedAt?.getTime() || taskRun.timestamps.createdAt.getTime();
+    taskRun.durationMs = taskRun.timestamps.endedAt.getTime() - startTime;
+
     if (error) {
       taskRun.message = error;
+      taskRun.error = {
+        message: error,
+      };
+    }
+
+    if (outputs && finalState === TaskRunState.SUCCESS) {
+      taskRun.outputs = outputs;
     }
 
     await this.config.stateStore.updateTaskRun(taskRun);

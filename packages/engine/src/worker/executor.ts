@@ -5,13 +5,15 @@ import { WorkItem, WorkResult } from './types';
 import { PluginExecutor, PluginManager, ProcessRuntime, WorkflowPermissions } from '@autokestra/plugin-runtime';
 import type { SecretResolver } from '@autokestra/secrets';
 import { LogCollector } from '../execution/logging';
+import type { StateStore } from '../storage/types';
 
 export class WorkflowTaskExecutor implements TaskExecutor {
   private pluginExecutor?: PluginExecutor;
   private secretResolver?: SecretResolver;
   private logCollector?: LogCollector;
+  private stateStore?: StateStore;
 
-  constructor(pluginConfig?: any, secretResolver?: SecretResolver, logCollector?: LogCollector) {
+  constructor(pluginConfig?: any, secretResolver?: SecretResolver, logCollector?: LogCollector, stateStore?: StateStore) {
     if (pluginConfig) {
       const manager = new PluginManager(pluginConfig);
       const runtime = new ProcessRuntime(); // Default to trusted
@@ -20,6 +22,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
     }
     this.secretResolver = secretResolver;
     this.logCollector = logCollector;
+    this.stateStore = stateStore;
   }
 
   async execute(workItem: WorkItem, signal: AbortSignal): Promise<WorkResult> {
@@ -27,6 +30,24 @@ export class WorkflowTaskExecutor implements TaskExecutor {
     const payload = workItem.payload as any;
     const executionId = payload.executionId;
     const taskId = payload.taskId;
+
+    if (workItem.attempt > 1) {
+      const retryReason = payload?.retryReason || payload?.lastError || payload?.error || 'unknown';
+      this.logCollector?.log({
+        executionId,
+        taskId,
+        timestamp: Date.now(),
+        level: 'WARN',
+        source: 'worker',
+        message: `Task retry attempt ${workItem.attempt}`,
+        metadata: {
+          attempt: workItem.attempt,
+          reason: retryReason,
+        },
+      });
+    }
+
+    const maskedInputs = this.maskSecrets(payload.inputs || {});
 
     // Log task start
     this.logCollector?.log({
@@ -38,9 +59,11 @@ export class WorkflowTaskExecutor implements TaskExecutor {
       message: `Task started: ${payload.type}`,
       metadata: { 
         taskType: payload.type,
-        inputs: this.maskSecrets(payload.inputs || {})
+        inputs: maskedInputs
       },
     });
+
+    await this.updateTaskRunOnStart(executionId, taskId, payload.type, maskedInputs);
 
     try {
       // Assume payload has type field
@@ -87,6 +110,8 @@ export class WorkflowTaskExecutor implements TaskExecutor {
           },
         });
 
+        await this.updateTaskRunOnSuccess(executionId, taskId, duration, this.maskSecrets(result.result));
+
         return {
           workItemId: workItem.id,
           outcome: 'SUCCESS',
@@ -109,6 +134,8 @@ export class WorkflowTaskExecutor implements TaskExecutor {
             duration
           },
         });
+
+        await this.updateTaskRunOnSuccess(executionId, taskId, duration, { builtIn: true });
 
         return {
           workItemId: workItem.id,
@@ -134,6 +161,8 @@ export class WorkflowTaskExecutor implements TaskExecutor {
           stack: (error as Error).stack
         },
       });
+
+      await this.updateTaskRunOnFailure(executionId, taskId, duration, error as Error);
 
       return {
         workItemId: workItem.id,
@@ -166,6 +195,66 @@ export class WorkflowTaskExecutor implements TaskExecutor {
       }
     }
     return masked;
+  }
+
+  private async updateTaskRunOnStart(
+    executionId: string,
+    taskId: string,
+    taskType: string,
+    inputs: Record<string, any>
+  ): Promise<void> {
+    if (!this.stateStore) return;
+
+    const taskRun = await this.stateStore.getTaskRun(executionId, taskId);
+    if (!taskRun) return;
+
+    taskRun.inputs = inputs;
+    taskRun.metadata = {
+      ...taskRun.metadata,
+      taskType,
+    };
+    taskRun.timestamps.updatedAt = new Date();
+
+    await this.stateStore.updateTaskRun(taskRun);
+  }
+
+  private async updateTaskRunOnSuccess(
+    executionId: string,
+    taskId: string,
+    durationMs: number,
+    outputs: Record<string, any>
+  ): Promise<void> {
+    if (!this.stateStore) return;
+
+    const taskRun = await this.stateStore.getTaskRun(executionId, taskId);
+    if (!taskRun) return;
+
+    taskRun.outputs = outputs;
+    taskRun.durationMs = durationMs;
+    taskRun.timestamps.updatedAt = new Date();
+
+    await this.stateStore.updateTaskRun(taskRun);
+  }
+
+  private async updateTaskRunOnFailure(
+    executionId: string,
+    taskId: string,
+    durationMs: number,
+    error: Error
+  ): Promise<void> {
+    if (!this.stateStore) return;
+
+    const taskRun = await this.stateStore.getTaskRun(executionId, taskId);
+    if (!taskRun) return;
+
+    taskRun.error = {
+      message: error.message,
+      stack: error.stack,
+    };
+    taskRun.durationMs = durationMs;
+    taskRun.timestamps.updatedAt = new Date();
+
+    await this.stateStore.updateTaskRun(taskRun);
   }
 }
 

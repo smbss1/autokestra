@@ -133,12 +133,14 @@ describe('SQLiteStateStore', () => {
       execution.state = ExecutionState.RUNNING;
       execution.timestamps.startedAt = new Date();
       execution.timestamps.updatedAt = new Date();
+      execution.logEntryCount = 5;
 
       await store.updateExecution(execution);
 
       const retrieved = await store.getExecution('exec1');
       expect(retrieved?.state).toBe(ExecutionState.RUNNING);
       expect(retrieved?.timestamps.startedAt).not.toBeUndefined();
+      expect(retrieved?.logEntryCount).toBe(5);
     });
 
     it('should list executions with filters', async () => {
@@ -209,13 +211,13 @@ describe('SQLiteStateStore', () => {
 
       await store.updateTaskRun(taskRun);
 
-      const retrieved = await store.getTaskRun('exec1', 'task1');
       expect(retrieved?.state).toBe(TaskRunState.RUNNING);
     });
 
     it('should list task runs for an execution', async () => {
       await store.createTaskRun(createInitialTaskRun('exec1', 'task1'));
       await store.createTaskRun(createInitialTaskRun('exec1', 'task2'));
+      expect(retrieved?.logEntryCount).toBe(5);
       await store.createTaskRun(createInitialTaskRun('exec1', 'task3'));
 
       const results = await store.listTaskRuns({ executionId: 'exec1' });
@@ -257,6 +259,24 @@ describe('SQLiteStateStore', () => {
           taskRunId: 'exec1:task1',
           attemptNumber: i,
           timestamps: {
+
+    it('should persist task run debug fields', async () => {
+      const taskRun = createInitialTaskRun('exec1', 'task1');
+      taskRun.inputs = { apiKey: '***MASKED***', value: 'ok' };
+      taskRun.outputs = { result: 'success' };
+      taskRun.error = { message: 'none' };
+      taskRun.durationMs = 1234;
+      taskRun.metadata = { taskType: 'test' };
+
+      await store.createTaskRun(taskRun);
+
+      const retrieved = await store.getTaskRun('exec1', 'task1');
+      expect(retrieved?.inputs).toEqual({ apiKey: '***MASKED***', value: 'ok' });
+      expect(retrieved?.outputs).toEqual({ result: 'success' });
+      expect(retrieved?.error).toEqual({ message: 'none' });
+      expect(retrieved?.durationMs).toBe(1234);
+      expect(retrieved?.metadata).toEqual({ taskType: 'test' });
+    });
             createdAt: new Date(),
             updatedAt: new Date(),
           },
