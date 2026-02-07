@@ -9,12 +9,12 @@ describe('validateWorkflow', () => {
   let secretStore: SecretStore;
   const testDbPath = join(process.cwd(), 'test-validate.db');
 
-  beforeEach(() => {
+  beforeEach(async () => {
     try {
       unlinkSync(testDbPath);
     } catch {}
     secretStore = new SecretStore(testDbPath);
-    secretStore.set('EXISTING_SECRET', 'value');
+    await secretStore.set('EXISTING_SECRET', 'value');
   });
 
   afterEach(() => {
@@ -24,33 +24,41 @@ describe('validateWorkflow', () => {
     } catch {}
   });
 
-  it('should pass validation for workflow with existing secrets', () => {
+  it('should pass validation for workflow with existing secrets', async () => {
     const workflow: Workflow = {
       apiVersion: 'v1',
       id: 'test-workflow',
       enabled: true,
       secrets: ['EXISTING_SECRET'],
-      tasks: [],
+      tasks: [{
+        id: 'task1',
+        type: 'example/plugin.action',
+        needs: []
+      }],
       source: { filePath: 'test.yaml' },
     };
 
-    expect(() => validateWorkflow(workflow, { secretStore })).not.toThrow();
+    await expect(validateWorkflow(workflow, { secretStore })).resolves.not.toThrow();
   });
 
-  it('should fail validation for workflow with missing secret', () => {
+  it('should fail validation for workflow with missing secret', async () => {
     const workflow: Workflow = {
       apiVersion: 'v1',
       id: 'test-workflow',
       enabled: true,
       secrets: ['MISSING_SECRET'],
-      tasks: [],
+      tasks: [{
+        id: 'task1',
+        type: 'example/plugin.action',
+        needs: []
+      }],
       source: { filePath: 'test.yaml' },
     };
 
-    expect(() => validateWorkflow(workflow, { secretStore })).toThrow('Declared secret \'MISSING_SECRET\' not found');
+    await expect(validateWorkflow(workflow, { secretStore })).rejects.toThrow('Declared secret \'MISSING_SECRET\' not found');
   });
 
-  it('should pass validation when secret exists as environment variable', () => {
+  it('should pass validation when secret exists as environment variable', async () => {
     const originalEnv = process.env.ENV_SECRET;
     process.env.ENV_SECRET = 'env-value';
 
@@ -60,25 +68,33 @@ describe('validateWorkflow', () => {
         id: 'test-workflow',
         enabled: true,
         secrets: ['ENV_SECRET'],
-        tasks: [],
+        tasks: [{
+          id: 'task1',
+          type: 'example/plugin.action',
+          needs: []
+        }],
         source: { filePath: 'test.yaml' },
       };
 
-      expect(() => validateWorkflow(workflow, { secretStore })).not.toThrow();
+      await expect(validateWorkflow(workflow, { secretStore })).resolves.not.toThrow();
     } finally {
       process.env.ENV_SECRET = originalEnv;
     }
   });
 
-  it('should pass validation for workflow without secrets', () => {
+  it('should pass validation for workflow without secrets', async () => {
     const workflow: Workflow = {
       apiVersion: 'v1',
       id: 'test-workflow',
       enabled: true,
-      tasks: [],
+      tasks: [{
+        id: 'task1',
+        type: 'example/plugin.action',
+        needs: []
+      }],
       source: { filePath: 'test.yaml' },
     };
 
-    expect(() => validateWorkflow(workflow, { secretStore })).not.toThrow();
+    await expect(validateWorkflow(workflow, { secretStore })).resolves.not.toThrow();
   });
 });

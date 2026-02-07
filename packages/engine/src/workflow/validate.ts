@@ -11,7 +11,7 @@ export interface ValidateWorkflowOptions {
   secretStore?: SecretStore;
 }
 
-export function validateWorkflow(workflow: Workflow, options: ValidateWorkflowOptions = {}): void {
+export async function validateWorkflow(workflow: Workflow, options: ValidateWorkflowOptions = {}): Promise<void> {
   const diagnostics: WorkflowDiagnostic[] = [];
 
   diagnostics.push(...validateWorkflowSemantics(workflow));
@@ -30,7 +30,8 @@ export function validateWorkflow(workflow: Workflow, options: ValidateWorkflowOp
 
   if (options.secretStore && workflow.secrets) {
     for (const secretName of workflow.secrets) {
-      if (options.secretStore.get(secretName) === null && !process.env[secretName]) {
+      const secretValue = await options.secretStore.get(secretName);
+      if (secretValue === null && !process.env[secretName]) {
         diagnostics.push({
           severity: 'error',
           path: 'secrets',

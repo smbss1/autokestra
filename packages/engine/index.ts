@@ -9,3 +9,6 @@ export * as execution from './src/execution';
 
 // Storage layer
 export * as storage from './src/storage';
+
+// Logging and observability
+export * as logging from './src/execution/logging';

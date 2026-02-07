@@ -72,7 +72,7 @@ tasks:
   });
 
   describe('DAG validation failures', () => {
-    it('should throw WorkflowValidationError for empty tasks', () => {
+    it('should throw WorkflowValidationError for empty tasks', async () => {
       const yaml = `
 id: test-workflow
 tasks: []
@@ -80,10 +80,10 @@ tasks: []
       writeFileSync(tempFile, yaml);
 
       const workflow = parseWorkflowFile(tempFile);
-      expect(() => validateWorkflow(workflow)).toThrow(WorkflowValidationError);
+      await expect(validateWorkflow(workflow)).rejects.toThrow(WorkflowValidationError);
     });
 
-    it('should throw WorkflowValidationError for duplicate task ids', () => {
+    it('should throw WorkflowValidationError for duplicate task ids', async () => {
       const yaml = `
 id: test-workflow
 tasks:
@@ -95,10 +95,10 @@ tasks:
       writeFileSync(tempFile, yaml);
 
       const workflow = parseWorkflowFile(tempFile);
-      expect(() => validateWorkflow(workflow)).toThrow(WorkflowValidationError);
+      await expect(validateWorkflow(workflow)).rejects.toThrow(WorkflowValidationError);
     });
 
-    it('should throw WorkflowValidationError for unknown dependency', () => {
+    it('should throw WorkflowValidationError for unknown dependency', async () => {
       const yaml = `
 id: test-workflow
 tasks:
@@ -109,10 +109,10 @@ tasks:
       writeFileSync(tempFile, yaml);
 
       const workflow = parseWorkflowFile(tempFile);
-      expect(() => validateWorkflow(workflow)).toThrow(WorkflowValidationError);
+      await expect(validateWorkflow(workflow)).rejects.toThrow(WorkflowValidationError);
     });
 
-    it('should throw WorkflowValidationError for dependency cycle', () => {
+    it('should throw WorkflowValidationError for dependency cycle', async () => {
       const yaml = `
 id: test-workflow
 tasks:
@@ -126,7 +126,7 @@ tasks:
       writeFileSync(tempFile, yaml);
 
       const workflow = parseWorkflowFile(tempFile);
-      expect(() => validateWorkflow(workflow)).toThrow(WorkflowValidationError);
+      await expect(validateWorkflow(workflow)).rejects.toThrow(WorkflowValidationError);
     });
   });
 
@@ -205,7 +205,7 @@ tasks:
       hasTaskType: (type: string) => type === 'example/plugin.action',
     };
 
-    it('should pass validation when task type exists in registry', () => {
+    it('should pass validation when task type exists in registry', async () => {
       const yaml = `
 id: test-workflow
 tasks:
@@ -215,10 +215,10 @@ tasks:
       writeFileSync(tempFile, yaml);
 
       const workflow = parseWorkflowFile(tempFile);
-      expect(() => validateWorkflow(workflow, { pluginRegistry: mockRegistry })).not.toThrow();
+      await expect(validateWorkflow(workflow, { pluginRegistry: mockRegistry })).resolves.toBeUndefined();
     });
 
-    it('should throw WorkflowValidationError when task type does not exist in registry', () => {
+    it('should throw WorkflowValidationError when task type does not exist in registry', async () => {
       const yaml = `
 id: test-workflow
 tasks:
@@ -228,10 +228,10 @@ tasks:
       writeFileSync(tempFile, yaml);
 
       const workflow = parseWorkflowFile(tempFile);
-      expect(() => validateWorkflow(workflow, { pluginRegistry: mockRegistry })).toThrow(WorkflowValidationError);
+      await expect(validateWorkflow(workflow, { pluginRegistry: mockRegistry })).rejects.toThrow(WorkflowValidationError);
     });
 
-    it('should skip plugin validation when no registry provided', () => {
+    it('should skip plugin validation when no registry provided', async () => {
       const yaml = `
 id: test-workflow
 tasks:
@@ -241,7 +241,7 @@ tasks:
       writeFileSync(tempFile, yaml);
 
       const workflow = parseWorkflowFile(tempFile);
-      expect(() => validateWorkflow(workflow)).not.toThrow();
+      await expect(validateWorkflow(workflow)).resolves.toBeUndefined();
     });
   });
 });

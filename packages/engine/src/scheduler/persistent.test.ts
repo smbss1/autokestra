@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { PersistentScheduler } from './persistent';
 import { SQLiteStateStore } from '../storage/sqlite';
 import { ExecutionState } from '../execution/types';
+import { LogCollector } from '../execution/logging/collector';
+import { AuditLogger } from '../execution/logging/audit';
+import { LogStore } from '../execution/logging/store';
 import { unlinkSync, existsSync } from 'fs';
 
 describe('PersistentScheduler', () => {
@@ -123,7 +126,56 @@ describe('PersistentScheduler', () => {
     expect(execution?.state).toBe(ExecutionState.CANCELLED);
   });
 
+  it('should create execution with custom trigger type', async () => {
+    const store = new SQLiteStateStore({ path: testDbPath });
+    await store.initialize();
+
+    const logCollector = new LogCollector({
+      db: store.db,
+      maxBufferSize: 10,
+      flushIntervalMs: 100
+    });
+
+    const auditLogger = new AuditLogger({ db: store.db });
+
+    const scheduler = new PersistentScheduler({
+      stateStore: store,
+      logCollector,
+      auditLogger
+    });
+
+    // Create execution with webhook trigger type
+    const execution = await scheduler.createExecution('wf1', 'exec-webhook', 'webhook');
+
+    expect(execution.executionId).toBe('exec-webhook');
+    expect(execution.workflowId).toBe('wf1');
+    expect(execution.state).toBe(ExecutionState.PENDING);
+
+    // Force flush logs
+    logCollector.flush();
+
+    // Verify log contains correct trigger type
+    const logs = new LogStore({ db: store.db }).getLogsByExecution('exec-webhook');
+    const createLog = logs.find(log => log.message.includes('Execution created'));
+    expect(createLog?.metadata?.triggerType).toBe('webhook');
+
+    // Verify audit event contains correct trigger type
+    const auditTrail = new LogStore({ db: store.db }).getAuditTrail('exec-webhook');
+    const createdEvent = auditTrail.find(event => event.eventType === 'CREATED');
+    expect(createdEvent?.metadata?.triggerType).toBe('webhook');
+
+    logCollector.close();
+    await store.close();
+  });
+
   it('should timeout an execution and emit audit events', async () => {
+    const store = new SQLiteStateStore({ path: testDbPath });
+    await store.initialize();
+
+    const scheduler = new PersistentScheduler({
+      stateStore: store,
+    });
+
     await scheduler.createExecution('wf1', 'exec1');
     await scheduler.startExecution('exec1');
     await scheduler.timeoutExecution('exec1', 30000);
@@ -132,5 +184,7 @@ describe('PersistentScheduler', () => {
     expect(execution?.state).toBe(ExecutionState.FAILED);
     expect(execution?.reasonCode).toBe('TIMEOUT');
     expect(execution?.message).toContain('timed out after 30000ms');
+
+    await store.close();
   });
 });

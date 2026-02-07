@@ -11,7 +11,7 @@ describe('WorkflowTaskExecutor', () => {
   let executor: WorkflowTaskExecutor;
   const testDbPath = join(process.cwd(), 'test-executor.db');
 
-  beforeEach(() => {
+  beforeEach(async () => {
     try {
       unlinkSync(testDbPath);
     } catch {}
@@ -19,7 +19,7 @@ describe('WorkflowTaskExecutor', () => {
     secretResolver = new SecretResolver(secretStore);
     executor = new WorkflowTaskExecutor({}, secretResolver);
 
-    secretStore.set('API_KEY', 'resolved-api-key');
+    await secretStore.set('API_KEY', 'resolved-api-key');
   });
 
   afterEach(() => {

@@ -803,6 +803,48 @@ describe('Observability Integration Tests', () => {
     console.log(`Error handling test complete: verified buffer overflow, log truncation, and audit error resilience`);
   });
 
+  it('should log correct trigger types for different execution sources', async () => {
+    const executionId1 = 'trigger-test-manual';
+    const executionId2 = 'trigger-test-webhook';
+    const executionId3 = 'trigger-test-schedule';
+
+    // Create executions with different trigger types
+    await scheduler.createExecution('test-workflow', executionId1, 'manual');
+    await scheduler.createExecution('test-workflow', executionId2, 'webhook');
+    await scheduler.createExecution('test-workflow', executionId3, 'schedule');
+
+    // Force flush logs
+    logCollector.flush();
+
+    // Verify each execution has correct trigger type in logs
+    const logs1 = logStore.getLogsByExecution(executionId1);
+    const logs2 = logStore.getLogsByExecution(executionId2);
+    const logs3 = logStore.getLogsByExecution(executionId3);
+
+    const createLog1 = logs1.find(log => log.message.includes('Execution created'));
+    const createLog2 = logs2.find(log => log.message.includes('Execution created'));
+    const createLog3 = logs3.find(log => log.message.includes('Execution created'));
+
+    expect(createLog1?.metadata?.triggerType).toBe('manual');
+    expect(createLog2?.metadata?.triggerType).toBe('webhook');
+    expect(createLog3?.metadata?.triggerType).toBe('schedule');
+
+    // Verify audit trail also has correct trigger types
+    const audit1 = logStore.getAuditTrail(executionId1);
+    const audit2 = logStore.getAuditTrail(executionId2);
+    const audit3 = logStore.getAuditTrail(executionId3);
+
+    const createdEvent1 = audit1.find(event => event.eventType === 'CREATED');
+    const createdEvent2 = audit2.find(event => event.eventType === 'CREATED');
+    const createdEvent3 = audit3.find(event => event.eventType === 'CREATED');
+
+    expect(createdEvent1?.metadata?.triggerType).toBe('manual');
+    expect(createdEvent2?.metadata?.triggerType).toBe('webhook');
+    expect(createdEvent3?.metadata?.triggerType).toBe('schedule');
+
+    console.log(`Trigger type test complete: verified manual, webhook, and schedule triggers`);
+  });
+
   it('should handle execution cancellation with proper logging', async () => {
     const executionId = 'integration-test-cancel-1';
 

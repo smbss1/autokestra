@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
 // import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
+import { startServer } from '@autokestra/server';
 
 const VERSION = "0.0.1";
 const DEFAULT_DB_PATH = './autokestra.db';
@@ -28,9 +29,24 @@ program
   .addCommand(
     new Command('start')
       .description('start the workflow server')
-      .action(() => {
-        console.error('Server start - not yet implemented');
-        process.exit(EXIT_ERROR);
+      .option('-p, --port <port>', 'port to listen on', '3000')
+      .action((options) => {
+        const port = parseInt(options.port);
+        if (isNaN(port)) {
+          console.error('Invalid port number');
+          process.exit(EXIT_ERROR);
+        }
+        try {
+          startServer(port);
+          // Keep the process running
+          process.on('SIGINT', () => {
+            console.log('Shutting down server...');
+            process.exit(EXIT_SUCCESS);
+          });
+        } catch (error) {
+          console.error('Failed to start server:', error);
+          process.exit(EXIT_ERROR);
+        }
       })
   )
   .addCommand(

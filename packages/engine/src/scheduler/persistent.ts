@@ -22,7 +22,7 @@ export class PersistentScheduler {
   /**
    * Create a new execution and persist it to the state store
    */
-  async createExecution(workflowId: string, executionId: string): Promise<Execution> {
+  async createExecution(workflowId: string, executionId: string, triggerType: string = 'manual'): Promise<Execution> {
     const execution = createInitialExecution(workflowId, executionId);
     await this.config.stateStore.createExecution(execution);
     
@@ -33,11 +33,11 @@ export class PersistentScheduler {
       level: 'INFO',
       source: 'scheduler',
       message: `Execution created for workflow ${workflowId}`,
-      metadata: { workflowId, triggerType: 'manual' }, // TODO: pass actual trigger type
+      metadata: { workflowId, triggerType },
     });
 
     // Audit execution created
-    this.config.auditLogger?.emitCreated(executionId, workflowId, 'manual');
+    this.config.auditLogger?.emitCreated(executionId, workflowId, triggerType);
     
     return execution;
   }
