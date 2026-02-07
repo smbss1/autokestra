@@ -1,8 +1,9 @@
-import { object, number, string, union, literal, optional, check, pipe, minValue, maxValue } from 'valibot';
+import { object, number, string, union, literal, optional, pipe, minValue, maxValue, array } from 'valibot';
 
 export interface ServerConfig {
   port: number;
   host?: string;
+  apiKeys?: string[];
 }
 
 export interface SqliteStorageConfig {
@@ -56,6 +57,7 @@ export const DEFAULT_CONFIG: Config = {
 export const serverConfigSchema = object({
   port: pipe(number(), minValue(1), maxValue(65535)),
   host: optional(string()),
+  apiKeys: optional(array(string())),
 });
 
 export const sqliteStorageSchema = object({

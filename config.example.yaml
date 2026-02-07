@@ -6,6 +6,12 @@ server:
   port: 7233
   # Optional: server host (defaults to 0.0.0.0)
   # host: "127.0.0.1"
+  # API keys for authenticating /api/v1/* requests (secure-by-default)
+  # Clients can send either:
+  # - Authorization: Bearer <apiKey>
+  # - X-API-Key: <apiKey>
+  apiKeys:
+    - "dev-local-change-me"
 
 storage:
   # Storage backend: "sqlite" or "postgresql"

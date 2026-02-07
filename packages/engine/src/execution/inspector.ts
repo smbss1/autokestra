@@ -89,7 +89,7 @@ export class ExecutionInspector {
       durationMs: end ? end - start : undefined,
       reasonCode: execution.reasonCode,
       message: execution.message,
-      metadata: execution.metadata,
+      metadata: execution.metadata ? maskSecrets(execution.metadata) : execution.metadata,
     };
   }
 

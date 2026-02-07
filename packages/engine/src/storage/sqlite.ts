@@ -154,7 +154,7 @@ export class SQLiteStateStore implements StateStore {
       INSERT INTO executions (
         execution_id, workflow_id, state, reason_code, message, metadata, log_entry_count,
         created_at, started_at, ended_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(

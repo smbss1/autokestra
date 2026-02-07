@@ -71,9 +71,9 @@ describe('CLI', () => {
   });
 
   it('should exit with error for unimplemented commands', async () => {
-    const result = await runCli(['server', 'start']);
+    const result = await runCli(['server', 'start', '--config', './definitely-does-not-exist.yaml']);
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain('not yet implemented');
+    expect(result.stderr).toContain('Failed to start server');
   });
 
   it('should show server command help', async () => {

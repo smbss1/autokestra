@@ -79,7 +79,7 @@ export interface StateStore {
 
   // Attempts
   createAttempt(attempt: Attempt): Promise<void>;
-  getAttempts(taskRunId: string): Promise<Attempt[]>;
+  getAttempts(taskRunId: string, options?: AttemptQueryOptions): Promise<Attempt[]>;
 
   // Recovery
   getActiveExecutions(): Promise<Execution[]>;

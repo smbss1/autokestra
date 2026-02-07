@@ -4,7 +4,7 @@
   "description": "HTTP server and API layer",
   "main": "index.ts",
   "scripts": {
-    "build": "bun build index.ts --outdir dist",
+    "build": "bun build --target=bun index.ts --outdir dist",
     "lint": "bunx eslint src/**/*.ts",
     "format": "bunx prettier --write src/**/*.ts"
   },

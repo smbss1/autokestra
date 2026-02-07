@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
 // import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
 import { startServer } from '@autokestra/server';
+import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
 
 const VERSION = "0.0.1";
 const DEFAULT_DB_PATH = './autokestra.db';
@@ -29,22 +30,19 @@ program
   .addCommand(
     new Command('start')
       .description('start the workflow server')
-      .option('-p, --port <port>', 'port to listen on', '3000')
-      .action((options) => {
-        const port = parseInt(options.port);
-        if (isNaN(port)) {
-          console.error('Invalid port number');
-          process.exit(EXIT_ERROR);
-        }
+      .option('-c, --config <path>', 'path to YAML config', './config.yaml')
+      .action(async (options) => {
         try {
-          startServer(port);
+          const config = loadConfigFromFile(options.config);
+          await startServer({ config });
+
           // Keep the process running
           process.on('SIGINT', () => {
             console.log('Shutting down server...');
             process.exit(EXIT_SUCCESS);
           });
         } catch (error) {
-          console.error('Failed to start server:', error);
+          console.error('Failed to start server:', error instanceof Error ? error.message : error);
           process.exit(EXIT_ERROR);
         }
       })

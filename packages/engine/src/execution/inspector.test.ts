@@ -66,6 +66,7 @@ describe('ExecutionInspector', () => {
     const execution = createInitialExecution('wf-1', executionId);
     execution.state = ExecutionState.RUNNING;
     execution.timestamps.startedAt = new Date(Date.now() - 2000);
+    execution.metadata = { apiKey: 'super-secret', nested: { token: 'also-secret' }, safe: 'ok' };
     await store.createExecution(execution);
 
     const task1 = createInitialTaskRun(executionId, 'task-1');
@@ -100,6 +101,9 @@ describe('ExecutionInspector', () => {
     const overview = await inspector.getExecutionOverview(executionId);
     expect(overview?.executionId).toBe(executionId);
     expect(overview?.workflowId).toBe('wf-1');
+    expect((overview as any)?.metadata?.apiKey).toBe('***MASKED***');
+    expect((overview as any)?.metadata?.nested?.token).toBe('***MASKED***');
+    expect((overview as any)?.metadata?.safe).toBe('ok');
 
     const tasks = await inspector.getTaskDetails(executionId);
     expect(tasks.length).toBe(2);

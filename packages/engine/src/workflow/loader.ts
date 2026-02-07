@@ -59,19 +59,11 @@ export function parseWorkflowYaml(fileContent: string, filePath: string): unknow
   }
 }
 
-export function parseWorkflowFile(filePath: string): Workflow {
-  let fileContent: string;
-  try {
-    fileContent = readFileSync(filePath, 'utf-8');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new WorkflowLoadError(`Failed to read workflow file: ${message}`, filePath, error as Error);
-  }
-
-  const parsed = parseWorkflowYaml(fileContent, filePath);
+export function parseWorkflowContent(fileContent: string, sourceName: string): Workflow {
+  const parsed = parseWorkflowYaml(fileContent, sourceName);
 
   if (!parsed || typeof parsed !== 'object') {
-    throw new WorkflowValidationError('Workflow YAML must be a mapping/object at the top level', filePath, [
+    throw new WorkflowValidationError('Workflow YAML must be a mapping/object at the top level', sourceName, [
       { severity: 'error', path: '', message: 'Expected an object at the top level' },
     ]);
   }
@@ -94,13 +86,26 @@ export function parseWorkflowFile(filePath: string): Workflow {
   }
 
   if (diagnostics.length > 0) {
-    throw new WorkflowValidationError(`Workflow validation failed:\n${formatDiagnostics(diagnostics, filePath)}`,
-      filePath,
+    throw new WorkflowValidationError(
+      `Workflow validation failed:\n${formatDiagnostics(diagnostics, sourceName)}`,
+      sourceName,
       diagnostics,
     );
   }
 
-  return normalizeWorkflow(shape.success ? shape.output : parsed, filePath);
+  return normalizeWorkflow(shape.success ? shape.output : parsed, sourceName);
+}
+
+export function parseWorkflowFile(filePath: string): Workflow {
+  let fileContent: string;
+  try {
+    fileContent = readFileSync(filePath, 'utf-8');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new WorkflowLoadError(`Failed to read workflow file: ${message}`, filePath, error as Error);
+  }
+
+  return parseWorkflowContent(fileContent, filePath);
 }
 
 function SUPPORTED_VERSIONS_FOR_MESSAGE(): string {
