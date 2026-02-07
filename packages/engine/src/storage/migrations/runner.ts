@@ -53,6 +53,13 @@ export class MigrationRunner {
       up: this.getInitialSchema(),
     });
 
+    migrations.push({
+      version: 2,
+      name: 'add_logging_tables',
+      up: this.getLoggingTablesSchema(),
+      down: this.getLoggingTablesRollback(),
+    });
+
     return migrations.sort((a, b) => a.version - b.version);
   }
 
@@ -222,6 +229,46 @@ export class MigrationRunner {
       
       CREATE INDEX IF NOT EXISTS idx_outputs_execution 
         ON outputs(execution_id, created_at DESC);
+    `;
+  }
+
+  private getLoggingTablesSchema(): string {
+    return `
+      -- Execution logs table
+      CREATE TABLE IF NOT EXISTS execution_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        execution_id TEXT NOT NULL,
+        task_id TEXT,  -- NULL for execution-level logs
+        timestamp INTEGER NOT NULL,  -- Unix timestamp (ms)
+        level TEXT NOT NULL,  -- DEBUG, INFO, WARN, ERROR
+        source TEXT NOT NULL,  -- scheduler, worker, plugin:<name>
+        message TEXT NOT NULL,
+        metadata TEXT  -- JSON for structured data (optional)
+      );
+
+      -- Execution audit events table
+      CREATE TABLE IF NOT EXISTS execution_audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        execution_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,  -- CREATED, STARTED, STATE_CHANGE, COMPLETED, FAILED, CANCELLED
+        timestamp INTEGER NOT NULL,  -- Unix timestamp (ms)
+        metadata TEXT NOT NULL  -- JSON with event-specific data
+      );
+
+      -- Indexes for efficient queries
+      CREATE INDEX IF NOT EXISTS idx_logs_execution ON execution_logs(execution_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_logs_task ON execution_logs(task_id, timestamp);
+      CREATE INDEX IF NOT EXISTS idx_audit_execution ON execution_audit_events(execution_id, timestamp);
+    `;
+  }
+
+  private getLoggingTablesRollback(): string {
+    return `
+      DROP INDEX IF EXISTS idx_audit_execution;
+      DROP INDEX IF EXISTS idx_logs_task;
+      DROP INDEX IF EXISTS idx_logs_execution;
+      DROP TABLE IF EXISTS execution_audit_events;
+      DROP TABLE IF EXISTS execution_logs;
     `;
   }
 }

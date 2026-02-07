@@ -1,5 +1,5 @@
 import { PluginManager } from './manager'
-import { PluginRuntime } from './runtime'
+import { PluginRuntime, LogContext } from './runtime'
 import { resolveTemplates, TemplateContext } from './templates'
 import { WorkflowPermissions } from './permissions'
 
@@ -22,7 +22,8 @@ export class PluginExecutor {
     actionName: string,
     inputs: any,
     templateContext: TemplateContext,
-    timeoutMs?: number
+    timeoutMs?: number,
+    logContext?: LogContext
   ): Promise<{ result: any; metrics: ExecutionMetrics }> {
     const plugin = this.manager.resolvePlugin(namespace, pluginName)
     if (!plugin) {
@@ -36,7 +37,7 @@ export class PluginExecutor {
 
     const startTime = Date.now()
     try {
-      const result = await this.runtime.execute(plugin, resolvedInputs, timeoutMs)
+      const result = await this.runtime.execute(plugin, resolvedInputs, timeoutMs, logContext)
       const duration = Date.now() - startTime
       return {
         result,

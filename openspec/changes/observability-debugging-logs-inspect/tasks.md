@@ -1,68 +1,68 @@
 ## 1. Database Schema & Migrations
 
-- [ ] 1.1 Create migration script for execution_logs table (id, execution_id, task_id, timestamp, level, source, message, metadata)
-- [ ] 1.2 Create migration script for execution_audit_events table (id, execution_id, event_type, timestamp, metadata)
-- [ ] 1.3 Add indexes: idx_logs_execution (execution_id, timestamp), idx_logs_task (task_id, timestamp)
-- [ ] 1.4 Add index: idx_audit_execution (execution_id, timestamp)
-- [ ] 1.5 Test migrations with SQLite (verify tables created, indexes exist)
-- [ ] 1.6 Add rollback migrations for testing
+- [x] 1.1 Create migration script for execution_logs table (id, execution_id, task_id, timestamp, level, source, message, metadata)
+- [x] 1.2 Create migration script for execution_audit_events table (id, execution_id, event_type, timestamp, metadata)
+- [x] 1.3 Add indexes: idx_logs_execution (execution_id, timestamp), idx_logs_task (task_id, timestamp)
+- [x] 1.4 Add index: idx_audit_execution (execution_id, timestamp)
+- [x] 1.5 Test migrations with SQLite (verify tables created, indexes exist)
+- [x] 1.6 Add rollback migrations for testing
 
 ## 2. Log Collection Infrastructure
 
-- [ ] 2.1 Create LogCollector class with structured log entry interface (execution_id, task_id, level, source, message, metadata)
-- [ ] 2.2 Implement log buffering (max 100 entries or 1 second, whichever first)
-- [ ] 2.3 Implement flush-on-completion for execution termination
-- [ ] 2.4 Add log level enum (DEBUG, INFO, WARN, ERROR)
-- [ ] 2.5 Implement batch write to execution_logs table using transactions
-- [ ] 2.6 Add unit tests for LogCollector (buffering, flushing, transaction handling)
+- [x] 2.1 Create LogCollector class with structured log entry interface (execution_id, task_id, level, source, message, metadata)
+- [x] 2.2 Implement log buffering (max 100 entries or 1 second, whichever first)
+- [x] 2.3 Implement flush-on-completion for execution termination
+- [x] 2.4 Add log level enum (DEBUG, INFO, WARN, ERROR)
+- [x] 2.5 Implement batch write to execution_logs table using transactions
+- [x] 2.6 Add unit tests for LogCollector (buffering, flushing, transaction handling)
 
 ## 3. Execution Engine Log Integration
 
-- [ ] 3.1 Integrate LogCollector into Scheduler for execution lifecycle logs
-- [ ] 3.2 Log execution CREATED event (workflow_id, trigger_type)
-- [ ] 3.3 Log execution STARTED event (transition to RUNNING)
-- [ ] 3.4 Log execution COMPLETED/FAILED/CANCELLED events with metadata
-- [ ] 3.5 Add correlation ID (execution_id) to all scheduler logs
-- [ ] 3.6 Test scheduler logging (verify logs written for each state transition)
+- [x] 3.1 Integrate LogCollector into Scheduler for execution lifecycle logs
+- [x] 3.2 Log execution CREATED event (workflow_id, trigger_type)
+- [x] 3.3 Log execution STARTED event (transition to RUNNING)
+- [x] 3.4 Log execution COMPLETED/FAILED/CANCELLED events with metadata
+- [x] 3.5 Add correlation ID (execution_id) to all scheduler logs
+- [x] 3.6 Test scheduler logging (verify logs written for each state transition)
 
 ## 4. Worker Pool Log Integration
 
-- [ ] 4.1 Integrate LogCollector into WorkerPool task executor
-- [ ] 4.2 Log task start (task_id, task type, masked inputs)
-- [ ] 4.3 Log task completion (status, duration, outputs/errors)
+- [x] 4.1 Integrate LogCollector into WorkerPool task executor
+- [x] 4.2 Log task start (task_id, task type, masked inputs)
+- [x] 4.3 Log task completion (status, duration, outputs/errors)
 - [ ] 4.4 Log task retry attempts (attempt number, reason)
-- [ ] 4.5 Add correlation IDs (execution_id + task_id) to all worker logs
-- [ ] 4.6 Test worker logging (verify task logs have correct correlation)
+- [x] 4.5 Add correlation IDs (execution_id + task_id) to all worker logs
+- [x] 4.6 Test worker logging (verify task logs have correct correlation)
 
 ## 5. Plugin Runtime Log Integration
 
-- [ ] 5.1 Intercept plugin stdout in PluginExecutor
-- [ ] 5.2 Intercept plugin stderr in PluginExecutor
-- [ ] 5.3 Parse stdout/stderr line-by-line and create log entries
-- [ ] 5.4 Tag plugin logs with source=plugin:<namespace>/<plugin>.<action>
+- [x] 5.1 Intercept plugin stdout in PluginExecutor
+- [x] 5.2 Intercept plugin stderr in PluginExecutor
+- [x] 5.3 Parse stdout/stderr line-by-line and create log entries
+- [x] 5.4 Tag plugin logs with source=plugin:<namespace>/<plugin>.<action>
 - [ ] 5.5 Implement 10MB truncation limit per task with warning log
-- [ ] 5.6 Test plugin log capture (verify stdout/stderr captured correctly)
+- [x] 5.6 Test plugin log capture (verify stdout/stderr captured correctly)
 
 ## 6. Audit Trail Implementation
 
-- [ ] 6.1 Create AuditLogger class with event emission interface
-- [ ] 6.2 Implement audit event write to execution_audit_events table
-- [ ] 6.3 Ensure audit events written in same transaction as state changes
-- [ ] 6.4 Emit CREATED event on execution creation
-- [ ] 6.5 Emit STARTED event on execution start
-- [ ] 6.6 Emit STATE_CHANGE events for all state transitions (with from/to state in metadata)
-- [ ] 6.7 Emit COMPLETED/FAILED/CANCELLED events with appropriate metadata
-- [ ] 6.8 Test audit logger (verify events are immutable, transactional)
+- [x] 6.1 Create AuditLogger class with event emission interface
+- [x] 6.2 Implement audit event write to execution_audit_events table
+- [x] 6.3 Ensure audit events written in same transaction as state changes
+- [x] 6.4 Emit CREATED event on execution creation
+- [x] 6.5 Emit STARTED event on execution start
+- [x] 6.6 Emit STATE_CHANGE events for all state transitions (with from/to state in metadata)
+- [x] 6.7 Emit COMPLETED/FAILED/CANCELLED events with appropriate metadata
+- [x] 6.8 Test audit logger (verify events are immutable, transactional)
 
 ## 7. Log Retention & Cleanup
 
-- [ ] 7.1 Implement log retention configuration (AUTOKESTRA_LOG_RETENTION_DAYS env var, default 30)
-- [ ] 7.2 Implement cleanup job that deletes logs older than retention period
-- [ ] 7.3 Implement incremental cleanup (batches of 1000 rows)
-- [ ] 7.4 Run cleanup on server startup
-- [ ] 7.5 Schedule daily cleanup job
-- [ ] 7.6 Apply same retention to audit events
-- [ ] 7.7 Test cleanup (verify old logs deleted, recent logs preserved)
+- [x] 7.1 Implement log retention configuration (AUTOKESTRA_LOG_RETENTION_DAYS env var, default 30)
+- [x] 7.2 Implement cleanup job that deletes logs older than retention period
+- [x] 7.3 Implement incremental cleanup (batches of 1000 rows)
+- [x] 7.4 Run cleanup on server startup
+- [x] 7.5 Schedule daily cleanup job
+- [x] 7.6 Apply same retention to audit events
+- [x] 7.7 Test cleanup (verify old logs deleted, recent logs preserved)
 
 ## 8. Log Retrieval Query Layer
 

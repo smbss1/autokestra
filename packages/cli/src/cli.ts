@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
-import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
+// import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
 
 const VERSION = "0.0.1";
 const DEFAULT_DB_PATH = './autokestra.db';
@@ -154,12 +154,20 @@ program
     new Command('inspect')
       .description('inspect an execution')
       .argument('<executionId>', 'execution ID to inspect')
+      .option('--with-logs', 'include recent logs in output')
+      .option('--with-audit', 'include audit trail in output')
+      .option('--logs-limit <number>', 'limit number of logs to include', '10')
       .option('--json', 'output in JSON format')
+      .option('--pretty', 'pretty print JSON output')
       .option('--db <path>', 'database path', DEFAULT_DB_PATH)
       .action(async (executionId, options) => {
         try {
           await inspectExecution({ dbPath: options.db }, executionId, {
+            withLogs: options.withLogs,
+            withAudit: options.withAudit,
+            logsLimit: parseInt(options.logsLimit),
             json: options.json,
+            pretty: options.pretty,
           });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
@@ -172,12 +180,30 @@ program
     new Command('logs')
       .description('get execution logs')
       .argument('<executionId>', 'execution ID')
+      .option('--level <level>', 'filter by log level (DEBUG, INFO, WARN, ERROR)', (value, previous) => previous.concat([value]), [])
+      .option('--since <duration>', 'show logs from last N minutes/hours/days (e.g., 5m, 2h, 1d)')
+      .option('--task-id <taskId>', 'filter by task ID')
+      .option('--source <source>', 'filter by log source (scheduler, worker, plugin)')
+      .option('--grep <pattern>', 'filter logs containing pattern')
+      .option('--limit <number>', 'limit number of log entries', '100')
+      .option('--offset <number>', 'offset for pagination', '0')
+      .option('--follow', 'stream logs in real-time')
       .option('--json', 'output in JSON format')
+      .option('--pretty', 'pretty print JSON output')
       .option('--db <path>', 'database path', DEFAULT_DB_PATH)
       .action(async (executionId, options) => {
         try {
           await getExecutionLogs({ dbPath: options.db }, executionId, {
+            level: options.level.length > 0 ? options.level : undefined,
+            since: options.since,
+            taskId: options.taskId,
+            source: options.source,
+            grep: options.grep,
+            limit: parseInt(options.limit),
+            offset: parseInt(options.offset),
+            follow: options.follow,
             json: options.json,
+            pretty: options.pretty,
           });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
@@ -214,23 +240,6 @@ program
   );
 
 program
-  .command('plugin')
-  .description('manage plugins')
-  .addCommand(
-    new Command('list')
-      .description('list installed plugins')
-      .option('--json', 'output in JSON format')
-      .action((options) => {
-        if (options.json) {
-          console.log(JSON.stringify({ plugins: [] }, null, 2));
-        } else {
-          console.log('No plugins installed');
-        }
-        process.exit(EXIT_SUCCESS);
-      })
-  );
-
-program
   .command('config')
   .description('manage configuration')
   .addCommand(
@@ -242,6 +251,7 @@ program
       })
   );
 
+/*
 program
   .command('secrets')
   .description('manage secrets')
@@ -303,5 +313,6 @@ program
         }
       })
   );
+*/
 
 program.parse();

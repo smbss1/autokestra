@@ -4,12 +4,14 @@ import { TaskExecutor } from './interfaces';
 import { WorkItem, WorkResult } from './types';
 import { PluginExecutor, PluginManager, ProcessRuntime, WorkflowPermissions } from '@autokestra/plugin-runtime';
 import type { SecretResolver } from '@autokestra/secrets';
+import { LogCollector } from '../execution/logging';
 
 export class WorkflowTaskExecutor implements TaskExecutor {
   private pluginExecutor?: PluginExecutor;
   private secretResolver?: SecretResolver;
+  private logCollector?: LogCollector;
 
-  constructor(pluginConfig?: any, secretResolver?: SecretResolver) {
+  constructor(pluginConfig?: any, secretResolver?: SecretResolver, logCollector?: LogCollector) {
     if (pluginConfig) {
       const manager = new PluginManager(pluginConfig);
       const runtime = new ProcessRuntime(); // Default to trusted
@@ -17,61 +19,153 @@ export class WorkflowTaskExecutor implements TaskExecutor {
       this.pluginExecutor = new PluginExecutor(manager, runtime, permissions);
     }
     this.secretResolver = secretResolver;
+    this.logCollector = logCollector;
   }
 
   async execute(workItem: WorkItem, signal: AbortSignal): Promise<WorkResult> {
     const start = Date.now();
-
-    // Assume payload has type field
     const payload = workItem.payload as any;
-    if (payload?.type && this.isPluginTask(payload.type)) {
-      if (!this.pluginExecutor) {
-        throw new Error('Plugin executor not configured');
-      }
-      const [namespace, pluginAction] = payload.type.split('/');
-      const [pluginName, actionName] = pluginAction.split('.');
+    const executionId = payload.executionId;
+    const taskId = payload.taskId;
 
-      // Resolve secret templates in inputs
-      let resolvedInputs = payload.inputs || {};
-      if (this.secretResolver) {
-        resolvedInputs = this.secretResolver.resolve(resolvedInputs, payload.allowedSecrets);
-      }
+    // Log task start
+    this.logCollector?.log({
+      executionId,
+      taskId,
+      timestamp: start,
+      level: 'INFO',
+      source: 'worker',
+      message: `Task started: ${payload.type}`,
+      metadata: { 
+        taskType: payload.type,
+        inputs: this.maskSecrets(payload.inputs || {})
+      },
+    });
 
-      try {
+    try {
+      // Assume payload has type field
+      if (payload?.type && this.isPluginTask(payload.type)) {
+        if (!this.pluginExecutor) {
+          throw new Error('Plugin executor not configured');
+        }
+        const [namespace, pluginAction] = payload.type.split('/');
+        const [pluginName, actionName] = pluginAction.split('.');
+
+        // Resolve secret templates in inputs
+        let resolvedInputs = payload.inputs || {};
+        if (this.secretResolver) {
+          resolvedInputs = this.secretResolver.resolve(resolvedInputs, payload.allowedSecrets);
+        }
+
         const result = await this.pluginExecutor.execute(
           namespace,
           pluginName,
           actionName,
           resolvedInputs,
-          { secrets: {}, vars: {}, env: process.env }
+          { secrets: {}, vars: {}, env: process.env },
+          undefined, // timeoutMs
+          this.logCollector ? {
+            logCollector: this.logCollector,
+            executionId,
+            taskId
+          } : undefined
         );
+        
+        const duration = Date.now() - start;
+        // Log task completion
+        this.logCollector?.log({
+          executionId,
+          taskId,
+          timestamp: Date.now(),
+          level: 'INFO',
+          source: 'worker',
+          message: `Task completed successfully`,
+          metadata: { 
+            status: 'SUCCESS',
+            duration,
+            outputs: this.maskSecrets(result.result)
+          },
+        });
+
         return {
           workItemId: workItem.id,
           outcome: 'SUCCESS',
           result: result.result,
-          durationMs: Date.now() - start,
+          durationMs: duration,
         };
-      } catch (error) {
+      } else {
+        // Handle built-in tasks
+        const duration = Date.now() - start;
+        // Log task completion
+        this.logCollector?.log({
+          executionId,
+          taskId,
+          timestamp: Date.now(),
+          level: 'INFO',
+          source: 'worker',
+          message: `Built-in task completed successfully`,
+          metadata: { 
+            status: 'SUCCESS',
+            duration
+          },
+        });
+
         return {
           workItemId: workItem.id,
-          outcome: 'FAILED',
-          error: error as Error,
-          durationMs: Date.now() - start,
+          outcome: 'SUCCESS',
+          result: { builtIn: true },
+          durationMs: duration,
         };
       }
-    } else {
-      // Handle built-in tasks
+    } catch (error) {
+      const duration = Date.now() - start;
+      // Log task failure
+      this.logCollector?.log({
+        executionId,
+        taskId,
+        timestamp: Date.now(),
+        level: 'ERROR',
+        source: 'worker',
+        message: `Task failed: ${(error as Error).message}`,
+        metadata: { 
+          status: 'FAILED',
+          duration,
+          error: (error as Error).message,
+          stack: (error as Error).stack
+        },
+      });
+
       return {
         workItemId: workItem.id,
-        outcome: 'SUCCESS',
-        result: { builtIn: true },
-        durationMs: Date.now() - start,
+        outcome: 'FAILED',
+        error: error as Error,
+        durationMs: duration,
       };
     }
   }
 
   private isPluginTask(type: string): boolean {
     return type.includes('/') && type.includes('.');
+  }
+
+  private maskSecrets(obj: any): any {
+    if (typeof obj !== 'object' || obj === null) {
+      return obj;
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.maskSecrets(item));
+    }
+    
+    const masked: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (key.toLowerCase().includes('secret') || key.toLowerCase().includes('password') || key.toLowerCase().includes('token')) {
+        masked[key] = '***MASKED***';
+      } else {
+        masked[key] = this.maskSecrets(value);
+      }
+    }
+    return masked;
   }
 }
 

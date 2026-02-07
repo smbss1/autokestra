@@ -2,6 +2,27 @@
 
 import { Engine } from '@autokestra/engine';
 import { ExecutionState } from '@autokestra/engine/src/execution/types';
+import { LogStore, LogQueryFilters, LogQueryOptions } from '@autokestra/engine/src/execution/logging';
+
+/**
+ * Parse duration string like "5m", "2h", "1d" into milliseconds
+ */
+function parseDuration(duration: string): number {
+  const match = duration.match(/^(\d+)([mhd])$/);
+  if (!match) {
+    throw new Error('Invalid duration format. Use format like "5m", "2h", "1d"');
+  }
+
+  const value = parseInt(match[1]);
+  const unit = match[2];
+
+  switch (unit) {
+    case 'm': return value * 60 * 1000; // minutes
+    case 'h': return value * 60 * 60 * 1000; // hours
+    case 'd': return value * 24 * 60 * 60 * 1000; // days
+    default: throw new Error('Invalid duration unit');
+  }
+}
 
 export interface CliConfig {
   dbPath: string;
@@ -16,7 +37,24 @@ export interface ExecutionListOptions {
 }
 
 export interface ExecutionInspectOptions {
+  withLogs?: boolean;
+  withAudit?: boolean;
+  logsLimit?: number;
   json?: boolean;
+  pretty?: boolean;
+}
+
+export interface ExecutionLogsOptions {
+  level?: string[];
+  since?: string;
+  taskId?: string;
+  source?: string;
+  grep?: string;
+  limit?: number;
+  offset?: number;
+  follow?: boolean;
+  json?: boolean;
+  pretty?: boolean;
 }
 
 export interface ExecutionCleanupOptions {
@@ -168,6 +206,7 @@ export async function inspectExecution(
   try {
     await engine.initialize();
     const stateStore = engine.getStateStore();
+    const logStore = new LogStore({ db: stateStore.db });
 
     const execution = await stateStore.getExecution(executionId);
     if (!execution) {
@@ -177,31 +216,41 @@ export async function inspectExecution(
 
     const taskRuns = await stateStore.listTaskRuns({ executionId });
 
+    // Get logs if requested
+    let logs: any[] = [];
+    if (options.withLogs) {
+      logs = logStore.getLogsByExecution(executionId, {}, { limit: options.logsLimit || 10 });
+    }
+
+    // Get audit trail if requested
+    let auditTrail: any[] = [];
+    if (options.withAudit) {
+      auditTrail = logStore.getAuditTrail(executionId);
+    }
+
     if (options.json) {
-      console.log(
-        JSON.stringify(
-          {
-            execution: {
-              executionId: execution.executionId,
-              workflowId: execution.workflowId,
-              state: execution.state,
-              reasonCode: execution.reasonCode,
-              message: execution.message,
-              metadata: execution.metadata,
-              timestamps: execution.timestamps,
-            },
-            taskRuns: taskRuns.items.map((tr) => ({
-              taskId: tr.taskId,
-              state: tr.state,
-              reasonCode: tr.reasonCode,
-              message: tr.message,
-              timestamps: tr.timestamps,
-            })),
-          },
-          null,
-          2
-        )
-      );
+      const output = {
+        execution: {
+          executionId: execution.executionId,
+          workflowId: execution.workflowId,
+          state: execution.state,
+          reasonCode: execution.reasonCode,
+          message: execution.message,
+          metadata: execution.metadata,
+          timestamps: execution.timestamps,
+        },
+        taskRuns: taskRuns.items.map((tr) => ({
+          taskId: tr.taskId,
+          state: tr.state,
+          reasonCode: tr.reasonCode,
+          message: tr.message,
+          timestamps: tr.timestamps,
+        })),
+        ...(options.withLogs && { logs }),
+        ...(options.withAudit && { auditTrail }),
+      };
+
+      console.log(options.pretty ? JSON.stringify(output, null, 2) : JSON.stringify(output));
     } else {
       console.log(`\nExecution: ${execution.executionId}`);
       console.log(`Workflow: ${execution.workflowId}`);
@@ -229,6 +278,27 @@ export async function inspectExecution(
           }
         }
       }
+
+      if (options.withLogs && logs.length > 0) {
+        console.log(`\nRecent Logs (${logs.length}):`);
+        for (const log of logs) {
+          const timestamp = new Date(log.timestamp).toISOString();
+          const taskInfo = log.taskId ? `[${log.taskId}] ` : '';
+          const level = log.level.padEnd(5);
+          console.log(`  ${timestamp} ${level} ${log.source} ${taskInfo}${log.message}`);
+        }
+      }
+
+      if (options.withAudit && auditTrail.length > 0) {
+        console.log(`\nAudit Trail (${auditTrail.length} events):`);
+        for (const event of auditTrail) {
+          const timestamp = new Date(event.timestamp).toISOString();
+          console.log(`  ${timestamp} ${event.eventType}`);
+          if (event.metadata && Object.keys(event.metadata).length > 0) {
+            console.log(`    ${JSON.stringify(event.metadata)}`);
+          }
+        }
+      }
     }
   } finally {
     await engine.shutdown();
@@ -241,7 +311,7 @@ export async function inspectExecution(
 export async function getExecutionLogs(
   config: CliConfig,
   executionId: string,
-  options: { json?: boolean } = {}
+  options: ExecutionLogsOptions = {}
 ): Promise<void> {
   const engine = new Engine({
     storage: { path: config.dbPath },
@@ -251,33 +321,76 @@ export async function getExecutionLogs(
   try {
     await engine.initialize();
     const stateStore = engine.getStateStore();
+    const logStore = new LogStore({ db: stateStore.db });
 
+    // Verify execution exists
     const execution = await stateStore.getExecution(executionId);
     if (!execution) {
       console.error(`Execution ${executionId} not found`);
       process.exit(1);
     }
 
-    const taskRuns = await stateStore.listTaskRuns({ executionId });
+    // Build query filters
+    const filters: LogQueryFilters = {};
+    if (options.level && options.level.length > 0) {
+      filters.level = options.level;
+    }
+    if (options.taskId) {
+      filters.taskId = options.taskId;
+    }
+    if (options.source) {
+      filters.source = options.source;
+    }
+    if (options.since) {
+      filters.since = parseDuration(options.since);
+    }
+
+    // Build query options
+    const queryOptions: LogQueryOptions = {
+      limit: options.limit || 100,
+      offset: options.offset || 0,
+    };
+
+    // Get logs
+    const logs = logStore.getLogsByExecution(executionId, filters, queryOptions);
+
+    // Filter by grep pattern if specified
+    let filteredLogs = logs;
+    if (options.grep) {
+      const regex = new RegExp(options.grep, 'i');
+      filteredLogs = logs.filter(log => regex.test(log.message));
+    }
 
     if (options.json) {
-      const logs = await Promise.all(
-        taskRuns.items.map(async (tr) => ({
-          taskId: tr.taskId,
-          attempts: await stateStore.getAttempts(`${executionId}:${tr.taskId}`),
-        }))
-      );
-      console.log(JSON.stringify({ logs }, null, 2));
+      const output = options.pretty
+        ? JSON.stringify(filteredLogs, null, 2)
+        : JSON.stringify(filteredLogs);
+      console.log(output);
     } else {
+      if (filteredLogs.length === 0) {
+        console.log(`No logs found for execution ${executionId}`);
+        return;
+      }
+
       console.log(`\nLogs for execution: ${executionId}\n`);
-      for (const tr of taskRuns.items) {
-        console.log(`Task: ${tr.taskId} [${tr.state}]`);
-        const attempts = await stateStore.getAttempts(`${executionId}:${tr.taskId}`);
-        for (const attempt of attempts) {
-          console.log(`  Attempt ${attempt.attemptNumber}:`);
-          console.log(`    Created: ${attempt.timestamps.createdAt}`);
+      for (const log of filteredLogs) {
+        const timestamp = new Date(log.timestamp).toISOString();
+        const taskInfo = log.taskId ? `[${log.taskId}] ` : '';
+        const level = log.level.padEnd(5);
+        console.log(`${timestamp} ${level} ${log.source} ${taskInfo}${log.message}`);
+        if (log.metadata && Object.keys(log.metadata).length > 0) {
+          console.log(`  ${JSON.stringify(log.metadata)}`);
         }
       }
+
+      if (logs.length === (options.limit || 100)) {
+        console.log(`\nShowing first ${options.limit || 100} logs. Use --limit to see more.`);
+      }
+    }
+
+    // TODO: Implement --follow for streaming logs
+    if (options.follow) {
+      console.error('--follow not yet implemented');
     }
   } finally {
     await engine.shutdown();
