@@ -153,7 +153,7 @@ program
     new Command('cleanup')
       .description('clean up old executions')
       .option('--days <number>', 'retention period in days', '30')
-      .option('--state <state>', 'execution state to clean up (can be specified multiple times)', (value, previous) => previous.concat([value]), [])
+      .option<any>('--state <state>', 'execution state to clean up (can be specified multiple times)', (value, previous) => previous.concat([value]), [])
       .option('--dry-run', 'show what would be deleted without actually deleting')
       .option('--json', 'output in JSON format')
       .option('--db <path>', 'database path', DEFAULT_DB_PATH)
