@@ -101,4 +101,36 @@ describe('PersistentScheduler', () => {
 
     await expect(scheduler.startExecution('exec1')).rejects.toThrow('Cannot start');
   });
+
+  it('should cancel an execution and emit audit events', async () => {
+    await scheduler.createExecution('wf1', 'exec1');
+    await scheduler.startExecution('exec1');
+    await scheduler.cancelExecution('exec1', 'USER_REQUEST');
+
+    const execution = await store.getExecution('exec1');
+    expect(execution?.state).toBe(ExecutionState.CANCELLED);
+    expect(execution?.reasonCode).toBe('USER_REQUEST');
+    expect(execution?.timestamps.endedAt).toBeDefined();
+  });
+
+  it('should handle cancellation idempotently', async () => {
+    await scheduler.createExecution('wf1', 'exec1');
+    await scheduler.startExecution('exec1');
+    await scheduler.cancelExecution('exec1', 'USER_REQUEST');
+    await scheduler.cancelExecution('exec1', 'USER_REQUEST'); // Should not error
+
+    const execution = await store.getExecution('exec1');
+    expect(execution?.state).toBe(ExecutionState.CANCELLED);
+  });
+
+  it('should timeout an execution and emit audit events', async () => {
+    await scheduler.createExecution('wf1', 'exec1');
+    await scheduler.startExecution('exec1');
+    await scheduler.timeoutExecution('exec1', 30000);
+
+    const execution = await store.getExecution('exec1');
+    expect(execution?.state).toBe(ExecutionState.FAILED);
+    expect(execution?.reasonCode).toBe('TIMEOUT');
+    expect(execution?.message).toContain('timed out after 30000ms');
+  });
 });

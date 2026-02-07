@@ -128,13 +128,13 @@
 
 ## 13. Lifecycle Controls Log Integration
 
-- [ ] 13.1 Emit audit event on execution cancellation (type=CANCELLED, metadata with reason)
-- [ ] 13.2 Emit audit event on execution timeout (type=TIMEOUT, metadata with duration)
-- [ ] 13.3 Emit STATE_CHANGE audit events for all transitions
-- [ ] 13.4 Log cancellation requests (level=WARN, message with user/system info)
-- [ ] 13.5 Log timeout events (level=ERROR, message with timeout details)
-- [ ] 13.6 Log cancellation propagation to tasks
-- [ ] 13.7 Test lifecycle event logging (verify audit trail and logs created)
+- [x] 13.1 Emit audit event on execution cancellation (type=CANCELLED, metadata with reason)
+- [x] 13.2 Emit audit event on execution timeout (type=TIMEOUT, metadata with duration)
+- [x] 13.3 Emit STATE_CHANGE audit events for all transitions
+- [x] 13.4 Log cancellation requests (level=WARN, message with user/system info)
+- [x] 13.5 Log timeout events (level=ERROR, message with timeout details)
+- [x] 13.6 Log cancellation propagation to tasks
+- [x] 13.7 Test lifecycle event logging (verify audit trail and logs created)
 
 ## 14. Performance & Optimization
 

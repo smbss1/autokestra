@@ -11,6 +11,24 @@ export interface Execution {
   metadata?: Record<string, any>;
 }
 
+// Log metrics for execution metadata
+export interface ExecutionLogMetrics {
+  totalLogs: number;
+  logsByLevel: {
+    DEBUG: number;
+    INFO: number;
+    WARN: number;
+    ERROR: number;
+  };
+  logsBySource: {
+    scheduler: number;
+    worker: number;
+    plugin: number;
+  };
+  firstLogAt?: Date;
+  lastLogAt?: Date;
+}
+
 // TaskRun model
 export interface TaskRun {
   executionId: string;
@@ -19,6 +37,19 @@ export interface TaskRun {
   timestamps: Timestamps;
   reasonCode?: ReasonCode;
   message?: string;
+}
+
+// Log metrics for task run metadata
+export interface TaskRunLogMetrics {
+  totalLogs: number;
+  logsByLevel: {
+    DEBUG: number;
+    INFO: number;
+    WARN: number;
+    ERROR: number;
+  };
+  firstLogAt?: Date;
+  lastLogAt?: Date;
 }
 
 // Attempt model
