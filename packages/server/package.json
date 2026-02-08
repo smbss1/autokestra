@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@autokestra/engine": "workspace:*",
+    "@autokestra/secrets": "workspace:*",
     "hono": "^4.0.0"
   },
   "devDependencies": {

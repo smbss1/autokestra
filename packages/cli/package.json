@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@autokestra/engine": "workspace:*",
-    "@autokestra/secrets": "workspace:*",
     "@autokestra/server": "workspace:*",
     "commander": "^12.0.0",
     "yaml": "^2.8.2"

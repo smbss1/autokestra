@@ -6,6 +6,7 @@ import type { StoredWorkflow, StateStore } from '../storage/types';
 import { buildWorkflowGraph, topologicalSort } from '../scheduler/graph';
 import { LogCollector } from '../execution/logging';
 import { WorkflowTaskExecutor } from '../worker/executor';
+import { SecretResolver, SecretStore } from '@autokestra/secrets';
 
 export interface RunWorkflowOptions {
   stateStore: StateStore;
@@ -15,6 +16,8 @@ export interface RunWorkflowOptions {
   scheduledAt?: Date;
   pluginPaths: string[];
   silent?: boolean;
+  /** Optional secret resolver (recommended). */
+  secretResolver?: SecretResolver;
 }
 
 function nowDate(): Date {
@@ -55,12 +58,25 @@ export async function runStoredWorkflowOnce(options: RunWorkflowOptions): Promis
   await updateExecution(options.stateStore, execution);
 
   const logCollector = new LogCollector({ db: options.db });
+
+  let ownedSecretStore: SecretStore | undefined;
+  const secretResolver = options.secretResolver
+    ? options.secretResolver
+    : (() => {
+        ownedSecretStore = new SecretStore();
+        return new SecretResolver(ownedSecretStore);
+      })();
+
   const executor = new WorkflowTaskExecutor(
     { paths: options.pluginPaths },
-    undefined,
+    secretResolver,
     logCollector,
     options.stateStore,
   );
+
+  const declaredSecrets = Array.isArray((definition as any)?.secrets)
+    ? (definition as any).secrets.map((s: any) => String(s).trim()).filter(Boolean)
+    : [];
 
   try {
     for (const taskId of order) {
@@ -91,7 +107,7 @@ export async function runStoredWorkflowOnce(options: RunWorkflowOptions): Promis
             taskId: task.id,
             type: task.type,
             inputs: task.inputs ?? {},
-            allowedSecrets: [],
+            allowedSecrets: declaredSecrets,
           },
         },
         new AbortController().signal,
@@ -141,5 +157,10 @@ export async function runStoredWorkflowOnce(options: RunWorkflowOptions): Promis
     }
   } finally {
     logCollector.close();
+    try {
+      ownedSecretStore?.close();
+    } catch {
+      // ignore
+    }
   }
 }

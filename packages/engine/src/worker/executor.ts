@@ -4,7 +4,7 @@ import { TaskExecutor } from './interfaces';
 import { WorkItem, WorkResult } from './types';
 import { PluginExecutor, PluginManager, ProcessRuntime, WorkflowPermissions } from '@autokestra/plugin-runtime';
 import type { SecretResolver } from '@autokestra/secrets';
-import { LogCollector } from '../execution/logging';
+import { LogCollector, LogLevel } from '../execution/logging';
 import type { StateStore } from '../storage/types';
 
 export class WorkflowTaskExecutor implements TaskExecutor {
@@ -37,7 +37,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
         executionId,
         taskId,
         timestamp: Date.now(),
-        level: 'WARN',
+        level: LogLevel.WARN,
         source: 'worker',
         message: `Task retry attempt ${workItem.attempt}`,
         metadata: {
@@ -52,7 +52,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
     // Resolve secret templates in inputs (applies to both plugin and built-in tasks).
     let resolvedInputs = payload.inputs || {};
     if (this.secretResolver) {
-      resolvedInputs = this.secretResolver.resolve(resolvedInputs, payload.allowedSecrets);
+      resolvedInputs = await this.secretResolver.resolve(resolvedInputs, payload.allowedSecrets);
     }
 
     // Log task start
@@ -60,7 +60,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
       executionId,
       taskId,
       timestamp: start,
-      level: 'INFO',
+      level: LogLevel.INFO,
       source: 'worker',
       message: `Task started: ${payload.type}`,
       metadata: { 
@@ -104,7 +104,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
           pluginName,
           actionName,
           resolvedInputs,
-          { secrets: {}, vars: {}, env: process.env, ...(tasksContext ? { tasks: tasksContext } : {}) },
+          { secrets: {}, vars: {}, env: process.env as Record<string, string>, ...(tasksContext ? { tasks: tasksContext } : {}) },
           undefined, // timeoutMs
           this.logCollector ? {
             logCollector: this.logCollector,
@@ -119,7 +119,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
           executionId,
           taskId,
           timestamp: Date.now(),
-          level: 'INFO',
+          level: LogLevel.INFO,
           source: 'worker',
           message: `Task completed successfully`,
           metadata: { 
@@ -150,7 +150,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
           executionId,
           taskId,
           timestamp: Date.now(),
-          level: 'INFO',
+          level: LogLevel.INFO,
           source: 'worker',
           message: `Built-in task completed successfully`,
           metadata: { 
@@ -175,7 +175,7 @@ export class WorkflowTaskExecutor implements TaskExecutor {
         executionId,
         taskId,
         timestamp: Date.now(),
-        level: 'ERROR',
+        level: LogLevel.ERROR,
         source: 'worker',
         message: `Task failed: ${(error as Error).message}`,
         metadata: { 

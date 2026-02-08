@@ -1,12 +1,18 @@
 import type { Engine } from '../engine';
 import { startCronScheduler } from './cron';
 import { runStoredWorkflowOnce } from './workflowRunner';
+import type { SecretResolver } from '@autokestra/secrets';
 
 export interface EngineRuntimeOptions {
   engine: Engine;
   pluginPaths: string[];
   silent?: boolean;
   pollIntervalMs?: number;
+  /**
+   * Optional secret resolver for resolving {{ secrets.* }} templates.
+   * When provided (e.g. by the server), ensures a single shared secrets store.
+   */
+  secretResolver?: SecretResolver;
 }
 
 export interface EngineRuntime {
@@ -30,6 +36,7 @@ export function startEngineRuntime(options: EngineRuntimeOptions): EngineRuntime
         scheduledAt,
         pluginPaths: options.pluginPaths,
         silent,
+        secretResolver: options.secretResolver,
       });
     },
   });

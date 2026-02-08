@@ -5,6 +5,7 @@
     "": {
       "name": "autokestra",
       "devDependencies": {
+        "@autokestra/secrets": "workspace:*",
         "@eslint/js": "^9.39.2",
         "@types/better-sqlite3": "^7.6.13",
         "@types/bun": "^1.3.8",
@@ -26,7 +27,6 @@
       },
       "dependencies": {
         "@autokestra/engine": "workspace:*",
-        "@autokestra/secrets": "workspace:*",
         "@autokestra/server": "workspace:*",
         "commander": "^12.0.0",
         "yaml": "^2.8.2",
@@ -83,6 +83,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@autokestra/engine": "workspace:*",
+        "@autokestra/secrets": "workspace:*",
         "hono": "^4.0.0",
       },
       "devDependencies": {

@@ -6,7 +6,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
 import { applyWorkflow, deleteWorkflow, getWorkflow, listWorkflows } from './commands/workflow';
-// import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
+import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
 import { startManagedServer } from '@autokestra/server';
 import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
 import type { ApiClientConfig } from './apiClient';
@@ -547,19 +547,6 @@ program
   );
 
 program
-  .command('config')
-  .description('manage configuration')
-  .addCommand(
-    new Command('set')
-      .description('set configuration value')
-      .action(() => {
-        console.error('Config set - not yet implemented');
-        process.exit(EXIT_ERROR);
-      })
-  );
-
-/*
-program
   .command('secrets')
   .description('manage secrets')
   .addCommand(
@@ -567,9 +554,13 @@ program
       .description('set a secret value')
       .argument('<name>', 'secret name')
       .argument('[value]', 'secret value (prompt if not provided)')
-      .action(async (name, value) => {
+      .option('--json', 'output in JSON format')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .action(async (name, value, options) => {
         try {
-          await setSecret(name, value);
+          await setSecret({ api: resolveApiConfig(options) }, name, value, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
           console.error('Error setting secret:', error);
@@ -581,9 +572,13 @@ program
     new Command('get')
       .description('get a secret value')
       .argument('<name>', 'secret name')
-      .action(async (name) => {
+      .option('--json', 'output in JSON format')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .action(async (name, options) => {
         try {
-          await getSecret(name);
+          await getSecret({ api: resolveApiConfig(options) }, name, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
           console.error('Error getting secret:', error);
@@ -595,9 +590,12 @@ program
     new Command('list')
       .description('list secrets')
       .option('--json', 'output in JSON format')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
       .action(async (options) => {
         try {
-          await listSecrets({ json: options.json });
+          await listSecrets({ api: resolveApiConfig(options) }, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
           console.error('Error listing secrets:', error);
@@ -610,9 +608,12 @@ program
       .description('delete a secret')
       .argument('<name>', 'secret name')
       .option('--force', 'skip confirmation prompt')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
       .action(async (name, options) => {
         try {
-          await deleteSecret(name, { force: options.force });
+          await deleteSecret({ api: resolveApiConfig(options) }, name, { force: options.force });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
           console.error('Error deleting secret:', error);
@@ -620,6 +621,17 @@ program
         }
       })
   );
-*/
+
+program
+  .command('config')
+  .description('manage configuration')
+  .addCommand(
+    new Command('set')
+      .description('set configuration value')
+      .action(() => {
+        console.error('Config set - not yet implemented');
+        process.exit(EXIT_ERROR);
+      })
+  );
 
 program.parse();

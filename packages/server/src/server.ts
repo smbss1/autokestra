@@ -2,6 +2,7 @@ import type { Server } from 'bun';
 
 import { Engine, runtime } from '@autokestra/engine';
 import type { Config } from '@autokestra/engine/src/config';
+import { SecretResolver, SecretStore } from '@autokestra/secrets';
 
 import { createApp } from './app';
 
@@ -72,6 +73,11 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
 
   await engine.initialize();
 
+  // Secret store lives in the server process, but is considered part of the engine runtime surface.
+  // The CLI must never access secrets locally.
+  const secretStore = new SecretStore();
+  const secretResolver = new SecretResolver(secretStore);
+
   const startedAt = Date.now();
   const app = createApp({
     version: '0.0.1',
@@ -79,6 +85,7 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
     apiKeys,
     stateStore: engine.getStateStore(),
     db: engine.getDatabase(),
+    secretStore,
   });
 
   const port = config.server.port;
@@ -99,6 +106,7 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
         engine,
         pluginPaths,
         silent: options.silent ?? false,
+        secretResolver,
       });
 
   if (!options.silent) {
@@ -138,6 +146,11 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
     try {
       await engine.shutdown();
     } finally {
+      try {
+        secretStore.close();
+      } catch {
+        // best-effort
+      }
       shutdownResolve?.();
     }
   };

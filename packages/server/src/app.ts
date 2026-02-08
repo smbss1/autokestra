@@ -9,6 +9,8 @@ import { LogStore } from '@autokestra/engine/src/execution/logging/store';
 import { parseWorkflowContent } from '@autokestra/engine/src/workflow/loader';
 import { WorkflowParseError, WorkflowValidationError } from '@autokestra/engine/src/workflow/errors';
 
+import type { SecretStore } from '@autokestra/secrets';
+
 import { createApiKeyAuthMiddleware } from './auth';
 import { apiError } from './errors';
 
@@ -18,6 +20,7 @@ export interface ServerContext {
   apiKeys: string[];
   stateStore: StateStore;
   db: Database;
+  secretStore: SecretStore;
 }
 
 function toWorkflowDto(workflow: StoredWorkflow) {
@@ -87,6 +90,71 @@ export function createApp(ctx: ServerContext) {
       version: ctx.version,
       uptimeMs: Date.now() - ctx.startedAt,
     });
+  });
+
+  // Secrets
+  app.get('/api/v1/secrets', async (c) => {
+    try {
+      const items = ctx.secretStore.list();
+      return c.json({
+        secrets: items.map((s) => ({
+          name: s.name,
+          createdAt: new Date(s.created_at).toISOString(),
+          updatedAt: new Date(s.updated_at).toISOString(),
+        })),
+        total: items.length,
+      });
+    } catch (error) {
+      return c.json(apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Failed to list secrets'), 500);
+    }
+  });
+
+  app.put('/api/v1/secrets/:name', async (c) => {
+    const name = c.req.param('name');
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(apiError('BAD_REQUEST', 'Expected JSON body'), 400);
+    }
+
+    const value = (body as any)?.value;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return c.json(apiError('VALIDATION_ERROR', 'Body must be { "value": string } (non-empty)'), 400);
+    }
+
+    try {
+      await ctx.secretStore.set(name, value);
+      return c.body(null, 204);
+    } catch (error) {
+      return c.json(apiError('BAD_REQUEST', error instanceof Error ? error.message : 'Failed to set secret'), 400);
+    }
+  });
+
+  app.get('/api/v1/secrets/:name', async (c) => {
+    const name = c.req.param('name');
+    try {
+      const value = await ctx.secretStore.get(name);
+      if (value === null) {
+        return c.json(apiError('NOT_FOUND', `Secret '${name}' not found`), 404);
+      }
+      return c.json({ name, value });
+    } catch (error) {
+      return c.json(apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Failed to get secret'), 500);
+    }
+  });
+
+  app.delete('/api/v1/secrets/:name', async (c) => {
+    const name = c.req.param('name');
+    try {
+      const deleted = ctx.secretStore.delete(name);
+      if (!deleted) {
+        return c.json(apiError('NOT_FOUND', `Secret '${name}' not found`), 404);
+      }
+      return c.body(null, 204);
+    } catch (error) {
+      return c.json(apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Failed to delete secret'), 500);
+    }
   });
 
   // Workflows
