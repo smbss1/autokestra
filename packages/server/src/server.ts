@@ -10,6 +10,25 @@ export interface StartServerOptions {
   silent?: boolean;
 }
 
+export interface ManagedServer {
+  server: Server;
+  /**
+   * Gracefully stops accepting traffic, closes resources, and shuts down the Engine.
+   * Safe to call multiple times.
+   */
+  shutdown: (reason?: string) => Promise<void>;
+  /** Resolves once shutdown has completed. */
+  waitForShutdown: () => Promise<void>;
+}
+
+export interface StartManagedServerOptions extends StartServerOptions {
+  /**
+   * When true, installs SIGINT/SIGTERM handlers that trigger graceful shutdown.
+   * Default: true (server process use-case).
+   */
+  handleSignals?: boolean;
+}
+
 function requireApiKeys(config: Config): string[] {
   const apiKeys = config.server.apiKeys;
   if (!Array.isArray(apiKeys) || apiKeys.length === 0) {
@@ -23,6 +42,11 @@ function requireApiKeys(config: Config): string[] {
 }
 
 export async function startServer(options: StartServerOptions): Promise<Server> {
+  const managed = await startManagedServer({ ...options, handleSignals: false });
+  return managed.server;
+}
+
+export async function startManagedServer(options: StartManagedServerOptions): Promise<ManagedServer> {
   const { config } = options;
 
   const apiKeys = requireApiKeys(config);
@@ -62,5 +86,53 @@ export async function startServer(options: StartServerOptions): Promise<Server> 
     console.log(`Server running at http://${hostname}:${port}`);
   }
 
-  return server;
+  let shutdownResolve: (() => void) | undefined;
+  const shutdownDone = new Promise<void>((resolve) => {
+    shutdownResolve = resolve;
+  });
+
+  let shuttingDown = false;
+  const shutdown = async (reason?: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    if (!options.silent) {
+      // eslint-disable-next-line no-console
+      console.log(reason ? `Shutting down server (${reason})...` : 'Shutting down server...');
+    }
+
+    try {
+      // Stop accepting new connections.
+      // Bun supports stop([closeActiveConnections]). Keep it compatible.
+      (server as any).stop?.(true);
+    } catch {
+      // best-effort
+    }
+
+    try {
+      await engine.shutdown();
+    } finally {
+      shutdownResolve?.();
+    }
+  };
+
+  const handleSignals = options.handleSignals ?? true;
+  const onSigInt = () => void shutdown('SIGINT');
+  const onSigTerm = () => void shutdown('SIGTERM');
+
+  if (handleSignals) {
+    process.on('SIGINT', onSigInt);
+    process.on('SIGTERM', onSigTerm);
+
+    shutdownDone.finally(() => {
+      process.off('SIGINT', onSigInt);
+      process.off('SIGTERM', onSigTerm);
+    });
+  }
+
+  return {
+    server,
+    shutdown,
+    waitForShutdown: () => shutdownDone,
+  };
 }

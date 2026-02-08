@@ -1,12 +1,18 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
+import { spawn } from 'node:child_process';
+import * as fsSync from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
 // import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
-import { startServer } from '@autokestra/server';
+import { startManagedServer } from '@autokestra/server';
 import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
 
 const VERSION = "0.0.1";
 const DEFAULT_DB_PATH = './autokestra.db';
+const DEFAULT_PID_FILE = path.join(process.cwd(), '.autokestra', 'server.pid');
+const DEFAULT_LOG_FILE = path.join(process.cwd(), '.autokestra', 'server.log');
 
 // Exit codes
 const EXIT_SUCCESS = 0;
@@ -17,6 +23,60 @@ const EXIT_NOT_FOUND = 4;
 const EXIT_CONFLICT = 5;
 
 const program = new Command();
+
+async function ensureParentDir(filePath: string) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+}
+
+async function readPidFile(pidFile: string): Promise<number | null> {
+  try {
+    const raw = await fs.readFile(pidFile, 'utf8');
+    const pid = Number.parseInt(raw.trim(), 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writePidFile(pidFile: string, pid: number) {
+  await ensureParentDir(pidFile);
+  await fs.writeFile(pidFile, `${pid}\n`, 'utf8');
+}
+
+async function removePidFile(pidFile: string) {
+  try {
+    await fs.unlink(pidFile);
+  } catch {
+    // ignore
+  }
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getSelfSpawnCommandArgs(extraArgs: string[]): { command: string; args: string[] } {
+  const execPath = process.execPath;
+  const maybeScript = process.argv[1];
+  const looksLikeScript =
+    typeof maybeScript === 'string' &&
+    (maybeScript.endsWith('.ts') || maybeScript.endsWith('.js') || maybeScript.includes('/src/cli.'));
+
+  if (looksLikeScript) {
+    return { command: execPath, args: [maybeScript, ...extraArgs] };
+  }
+
+  return { command: execPath, args: extraArgs };
+}
+
+async function sleepMs(ms: number) {
+  await new Promise((r) => setTimeout(r, ms));
+}
 
 program
   .name('workflow')
@@ -31,16 +91,97 @@ program
     new Command('start')
       .description('start the workflow server')
       .option('-c, --config <path>', 'path to YAML config', './config.yaml')
+      .option('--pid-file <path>', 'path to PID file', DEFAULT_PID_FILE)
+      .option('--log-file <path>', 'path to daemon log file (background mode)', DEFAULT_LOG_FILE)
+      .option('--foreground', 'run in the foreground (do not daemonize)', false)
+      .option('--silent', 'suppress startup logs', false)
       .action(async (options) => {
         try {
-          const config = loadConfigFromFile(options.config);
-          await startServer({ config });
+          const pidFile = String(options.pidFile || DEFAULT_PID_FILE);
+          const existingPid = await readPidFile(pidFile);
+          if (existingPid && existingPid !== process.pid && isProcessRunning(existingPid)) {
+            console.error(`Server already running (pid ${existingPid}).`);
+            process.exit(EXIT_CONFLICT);
+          }
+          if (existingPid && existingPid !== process.pid && !isProcessRunning(existingPid)) {
+            await removePidFile(pidFile);
+          }
 
-          // Keep the process running
-          process.on('SIGINT', () => {
-            console.log('Shutting down server...');
+          if (!options.foreground) {
+            // Preflight validation so daemon start fails fast on bad config.
+            const preflightConfig: any = loadConfigFromFile(options.config);
+            const apiKeys = preflightConfig?.server?.apiKeys;
+            if (!Array.isArray(apiKeys) || apiKeys.map((k: any) => String(k).trim()).filter(Boolean).length === 0) {
+              throw new Error('Server API keys are required. Set server.apiKeys in your YAML config.');
+            }
+            const storageType = preflightConfig?.storage?.type;
+            if (storageType && storageType !== 'sqlite') {
+              throw new Error(`Only sqlite storage is supported by the server right now (got '${storageType}').`);
+            }
+
+            const { command, args } = getSelfSpawnCommandArgs([
+              'server',
+              'start',
+              '--foreground',
+              '--silent',
+              '--config',
+              String(options.config),
+              '--pid-file',
+              pidFile,
+            ]);
+
+            const logFile = String(options.logFile || DEFAULT_LOG_FILE);
+            await ensureParentDir(logFile);
+            const logFd = fsSync.openSync(logFile, 'a');
+
+            const child = spawn(command, args, {
+              detached: true,
+              stdio: ['ignore', logFd, logFd],
+              cwd: process.cwd(),
+              env: { ...process.env, AUTOKESTRA_DAEMON_CHILD: '1' },
+            });
+            try {
+              fsSync.closeSync(logFd);
+            } catch {
+              // ignore
+            }
+            child.unref();
+
+            const childPid = child.pid;
+            if (!childPid || childPid <= 0) {
+              throw new Error('Failed to daemonize server (no child PID).');
+            }
+
+            await writePidFile(pidFile, childPid);
+
+            // If the child exits immediately, treat it as a failed start.
+            await sleepMs(200);
+            if (!isProcessRunning(childPid)) {
+              await removePidFile(pidFile);
+              console.error(`Server failed to start (pid ${childPid} exited). See logs: ${logFile}`);
+              process.exit(EXIT_ERROR);
+            }
+
+            console.log(`Server started in background (pid ${childPid}). Logs: ${logFile}`);
             process.exit(EXIT_SUCCESS);
-          });
+          }
+
+          // Foreground mode: start + wait for graceful shutdown.
+          const config = loadConfigFromFile(options.config);
+          await writePidFile(pidFile, process.pid);
+
+          try {
+            const managed = await startManagedServer({
+              config,
+              silent: Boolean(options.silent),
+              handleSignals: true,
+            });
+
+            await managed.waitForShutdown();
+            process.exit(EXIT_SUCCESS);
+          } finally {
+            await removePidFile(pidFile);
+          }
         } catch (error) {
           console.error('Failed to start server:', error instanceof Error ? error.message : error);
           process.exit(EXIT_ERROR);
@@ -50,17 +191,68 @@ program
   .addCommand(
     new Command('stop')
       .description('stop the workflow server')
-      .action(() => {
-        console.error('Server stop - not yet implemented');
-        process.exit(EXIT_ERROR);
+      .option('--pid-file <path>', 'path to PID file', DEFAULT_PID_FILE)
+      .option('--timeout <ms>', 'timeout before force-kill (ms)', '5000')
+      .action(async (options) => {
+        const pidFile = String(options.pidFile || DEFAULT_PID_FILE);
+        const pid = await readPidFile(pidFile);
+        if (!pid) {
+          console.error('Server not running (no PID file).');
+          process.exit(EXIT_NOT_FOUND);
+        }
+
+        if (!isProcessRunning(pid)) {
+          await removePidFile(pidFile);
+          console.error(`Server not running (stale pid ${pid}).`);
+          process.exit(EXIT_NOT_FOUND);
+        }
+
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch (error) {
+          console.error(`Failed to signal server (pid ${pid}):`, error);
+          process.exit(EXIT_ERROR);
+        }
+
+        const timeoutMs = Math.max(0, Number.parseInt(String(options.timeout), 10) || 5000);
+        const start = Date.now();
+        while (isProcessRunning(pid) && Date.now() - start < timeoutMs) {
+          await sleepMs(100);
+        }
+
+        if (isProcessRunning(pid)) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            // ignore
+          }
+        }
+
+        await removePidFile(pidFile);
+        console.log('Server stopped.');
+        process.exit(EXIT_SUCCESS);
       })
   )
   .addCommand(
     new Command('status')
       .description('show server status')
-      .action(() => {
-        console.error('Server status - not yet implemented');
-        process.exit(EXIT_ERROR);
+      .option('--pid-file <path>', 'path to PID file', DEFAULT_PID_FILE)
+      .action(async (options) => {
+        const pidFile = String(options.pidFile || DEFAULT_PID_FILE);
+        const pid = await readPidFile(pidFile);
+        if (!pid) {
+          console.log('stopped');
+          process.exit(EXIT_SUCCESS);
+        }
+
+        if (!isProcessRunning(pid)) {
+          await removePidFile(pidFile);
+          console.log('stopped');
+          process.exit(EXIT_SUCCESS);
+        }
+
+        console.log(`running (pid ${pid})`);
+        process.exit(EXIT_SUCCESS);
       })
   );
 
