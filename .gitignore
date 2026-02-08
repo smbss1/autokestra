@@ -3,3 +3,5 @@ dist
 coverage
 *.sqlite
 autokestra
+*.db-*
+.autokestra
