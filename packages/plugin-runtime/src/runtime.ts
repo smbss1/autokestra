@@ -1,5 +1,6 @@
 import { PluginManifest, ActionDef } from '@autokestra/plugin-sdk'
 import { LogCollector } from '@autokestra/engine/src/execution/logging';
+import * as path from 'node:path'
 
 export interface PluginRuntime {
   execute(plugin: PluginInfo, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown>
@@ -20,9 +21,11 @@ export interface LogContext {
 export class ProcessRuntime implements PluginRuntime {
   async execute(plugin: PluginInfo, input: unknown, timeoutMs = 30000, logContext?: LogContext): Promise<unknown> {
     const action = plugin.manifest.actions[0] // Assume first action for now
-    const entryPoint = `${plugin.path}/index.ts` // Assume index.ts
+    const pluginDir = path.resolve(plugin.path)
+    const entryPoint = path.join(pluginDir, 'index.ts') // Assume index.ts
 
     const proc = Bun.spawn(['bun', 'run', entryPoint], {
+      cwd: pluginDir,
       stdin: 'pipe',
       stdout: 'pipe',
       stderr: 'pipe',

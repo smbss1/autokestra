@@ -7,7 +7,13 @@ trigger:
   cron: "* * * * *"
 
 tasks:
+  - id: fetch
+    type: core/http.get
+    inputs:
+      url: https://jsonplaceholder.typicode.com/posts/1
+
   - id: save
     type: core/console.log
+    needs: [fetch]
     inputs:
-      message: "Hello, world!"
+      message: "{{ tasks.fetch.output }}"

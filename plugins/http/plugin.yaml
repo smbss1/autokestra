@@ -1,0 +1,34 @@
+name: http
+version: 0.1.0
+namespace: core
+description: "Official core HTTP utilities"
+actions:
+  - name: get
+    description: "Perform an HTTP GET request"
+    input:
+      type: object
+      properties:
+        url:
+          type: string
+        headers:
+          type: object
+        timeoutMs:
+          type: number
+        response:
+          type: string
+          description: "How to parse the response body: json | text"
+      required: [url]
+    output:
+      type: object
+      properties:
+        url:
+          type: string
+        status:
+          type: number
+        ok:
+          type: boolean
+        headers:
+          type: object
+        body:
+          description: "Parsed body (object for json, string for text)"
+      required: [url, status, ok, headers, body]

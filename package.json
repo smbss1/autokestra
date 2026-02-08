@@ -5,7 +5,8 @@
   "description": "Self-hosted workflow engine inspired by Kestra and n8n",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "plugins/*"
   ],
   "scripts": {
     "build": "bun run build --filter='*'",

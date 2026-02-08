@@ -12,7 +12,7 @@ export class PluginResolver {
 
   resolve(namespace: string, pluginName: string): PluginInfo | null {
     for (const basePath of this.config.paths) {
-      const pluginPath = path.join(basePath, pluginName)
+      const pluginPath = path.resolve(basePath, pluginName)
       if (fs.existsSync(pluginPath) && fs.statSync(pluginPath).isDirectory()) {
         try {
           const manifest = loadManifest(pluginPath)
