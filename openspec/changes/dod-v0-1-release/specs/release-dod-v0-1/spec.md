@@ -66,3 +66,62 @@ The system MUST execute plugin tasks out-of-process (as an OS process and/or a D
 #### Scenario: Deny-by-default enforcement
 - **WHEN** a plugin attempts an operation without an explicitly granted permission
 - **THEN** the operation is denied and the failure is observable (error + audit/log signal)
+
+---
+
+## Implementation Deltas (As-Built)
+
+This section documents changes that were implemented in code to satisfy the v0.1 happy-path, but were not explicitly captured above as requirements/scenarios.
+
+### CLI: HTTP-only secrets management
+- The CLI secrets commands are enabled and are HTTP-only (the CLI does not open a secrets DB and does not depend on `@autokestra/secrets`).
+- Secrets commands support standard connection options:
+	- `--server <url>`
+	- `--api-key <key>` (Authorization: Bearer)
+	- `--config <path>` (optional defaults)
+	- `--json` where relevant
+- Implemented subcommands:
+	- `workflow secrets set <name> [value]`
+	- `workflow secrets get <name>`
+	- `workflow secrets list`
+	- `workflow secrets delete <name> [--force]`
+
+### Server: secrets CRUD API (admin surface)
+- The server exposes authenticated endpoints under `/api/v1/secrets`:
+	- `GET /api/v1/secrets` (list metadata)
+	- `PUT /api/v1/secrets/:name` with JSON `{ "value": "..." }` (set, 204)
+	- `GET /api/v1/secrets/:name` (reveal value, 200 or 404)
+	- `DELETE /api/v1/secrets/:name` (delete, 204 or 404)
+- All `/api/v1/*` routes are protected by API key middleware.
+
+Security note: the reveal endpoint returns secret cleartext by design for CLI usage. This does not contradict the "secrets are never exposed in outputs" requirement, which is scoped to workflow storage, execution DTOs, and logs. The secrets API is an explicit administrative surface.
+
+### Engine runtime: cron scheduler is in-process by default
+- When the server starts, it also starts the engine runtime (cron polling plus execution) in-process.
+- Runtime can be disabled via `AUTOKESTRA_DISABLE_RUNTIME=1`.
+
+### Cron scheduler: minimal cron expression support plus dedup
+- Cron matching supports only `*`, `*/n`, and exact integers for the 5-field format.
+- Scheduler deduplicates to at most one execution per workflow per minute by querying executions created within the current minute window.
+
+### Secrets resolution in task inputs
+- Secret resolution is async and is awaited during task execution.
+- Workflow-defined allowlist is enforced by passing `allowedSecrets` into secret resolution.
+
+### Secrets store sharing
+- The server owns a single `SecretStore` and constructs a shared `SecretResolver`.
+- The engine runtime is started with that resolver so workflow execution and the secrets API use the same store configuration.
+
+### Plugin runtime and templating interoperability fixes
+- Plugin processes are spawned with `cwd` set to the plugin directory (improves dependency resolution).
+- Plugin paths are normalized to absolute paths before execution.
+- Template resolution supports dotted paths and can return raw objects when the entire string is a single template.
+- Task template context includes persisted `tasks.<taskId>.output` to support `{{ tasks.someTask.output }}`.
+
+---
+
+## Known Limitations (v0.1)
+
+- Server currently enforces SQLite state storage at runtime (even though config schema validates a `postgresql` option).
+- Secrets storage is currently SQLite-only (encrypted values stored in a `secrets` table). A PostgreSQL secrets backend is not implemented in v0.1.
+- Cron support is intentionally minimal and does not support ranges, lists, or names.
