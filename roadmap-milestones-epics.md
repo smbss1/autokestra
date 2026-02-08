@@ -109,7 +109,8 @@ Objectif : transformer le PRD en **milestones livrables** et en **epics découpa
 
 - Lancer le serveur + appliquer un workflow YAML + exécuter sur trigger simple.
 - SQLite par défaut, sans dépendance externe.
-- Plugins WASM exécutables avec permissions “deny by default”.
+- Plugins exécutables avec permissions capabilities.
+- Core Plugins exécutables.
 
 ---
 
