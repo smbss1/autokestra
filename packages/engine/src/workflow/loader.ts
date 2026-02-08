@@ -10,7 +10,7 @@ import type { WorkflowDiagnostic } from './diagnostics.js';
 
 const ALLOWED_TOP_LEVEL_KEYS = ['apiVersion', 'version', 'id', 'enabled', 'trigger', 'tasks'] as const;
 const ALLOWED_TRIGGER_KEYS = ['type', 'cron', 'path', 'method'] as const;
-const ALLOWED_TASK_KEYS = ['id', 'type', 'needs', 'retry'] as const;
+const ALLOWED_TASK_KEYS = ['id', 'type', 'needs', 'inputs', 'retry'] as const;
 const ALLOWED_RETRY_KEYS = ['max', 'backoffSeconds'] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

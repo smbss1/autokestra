@@ -11,6 +11,7 @@ import {
   minValue,
   integer,
   minLength,
+  unknown,
   type BaseSchema,
   pipe,
   check,
@@ -33,6 +34,7 @@ export const taskSchema = object({
   id: pipe(string(), minLength(1)),
   type: pipe(string(), check((value) => taskTypeRegex.test(value), 'Task type must match namespace/plugin.action format')),
   needs: optional(array(pipe(string(), minLength(1)))),
+  inputs: optional(unknown()),
   retry: optional(retrySchema),
 });
 
@@ -123,6 +125,7 @@ export function normalizeWorkflow(parsed: any, filePath: string): Workflow {
     id: t.id,
     type: t.type,
     needs: Array.isArray((t as any).needs) ? (t as any).needs : [],
+    inputs: (t as any).inputs,
     retry: t.retry,
   }));
 

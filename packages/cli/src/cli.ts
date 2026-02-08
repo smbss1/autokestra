@@ -5,12 +5,13 @@ import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
+import { applyWorkflow, deleteWorkflow, getWorkflow, listWorkflows } from './commands/workflow';
 // import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
 import { startManagedServer } from '@autokestra/server';
 import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
+import type { ApiClientConfig } from './apiClient';
 
 const VERSION = "0.0.1";
-const DEFAULT_DB_PATH = './autokestra.db';
 const DEFAULT_PID_FILE = path.join(process.cwd(), '.autokestra', 'server.pid');
 const DEFAULT_LOG_FILE = path.join(process.cwd(), '.autokestra', 'server.log');
 
@@ -23,6 +24,45 @@ const EXIT_NOT_FOUND = 4;
 const EXIT_CONFLICT = 5;
 
 const program = new Command();
+
+function configExists(filePath: string): boolean {
+  try {
+    return fsSync.existsSync(filePath);
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiConfig(options: any): ApiClientConfig {
+  const configPath = typeof options.config === 'string' ? options.config : './config.yaml';
+  const config = configExists(configPath) ? loadConfigFromFile(configPath) : undefined;
+
+  const baseUrlFromConfig = config
+    ? `http://${(config.server.host && config.server.host !== '0.0.0.0' ? config.server.host : '127.0.0.1')}:${config.server.port}`
+    : undefined;
+
+  const baseUrl =
+    (typeof options.server === 'string' ? options.server : undefined) ||
+    process.env.AUTOKESTRA_SERVER_URL ||
+    baseUrlFromConfig ||
+    'http://127.0.0.1:7233';
+
+  const apiKeyFromConfig =
+    config?.server?.apiKeys && Array.isArray(config.server.apiKeys) && config.server.apiKeys.length > 0
+      ? String(config.server.apiKeys[0]).trim()
+      : undefined;
+
+  const apiKey =
+    (typeof options.apiKey === 'string' ? options.apiKey : undefined) ||
+    process.env.AUTOKESTRA_API_KEY ||
+    apiKeyFromConfig;
+
+  if (!apiKey) {
+    throw new Error('Missing API key. Provide --api-key, set AUTOKESTRA_API_KEY, or set server.apiKeys in config.yaml.');
+  }
+
+  return { baseUrl, apiKey };
+}
 
 async function ensureParentDir(filePath: string) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -262,30 +302,89 @@ program
   .addCommand(
     new Command('apply')
       .description('apply workflow definition')
-      .action(() => {
-        console.error('Workflow apply - not yet implemented');
-        process.exit(EXIT_ERROR);
+      .argument('<file>', 'path to workflow YAML file')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .option('--json', 'output in JSON format')
+      .option('--id <id>', 'override workflow id')
+      .option('--enable', 'force enable workflow')
+      .option('--disable', 'force disable workflow')
+      .action(async (file, options) => {
+        try {
+          const enabled = options.enable ? true : options.disable ? false : undefined;
+          await applyWorkflow(
+            { api: resolveApiConfig(options) },
+            file,
+            { json: options.json, enabled, idOverride: options.id },
+          );
+          process.exit(EXIT_SUCCESS);
+        } catch {
+          process.exit(EXIT_ERROR);
+        }
       })
   )
   .addCommand(
     new Command('delete')
       .description('delete workflow')
-      .action(() => {
-        console.error('Workflow delete - not yet implemented');
-        process.exit(EXIT_ERROR);
+      .argument('<id>', 'workflow id')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .option('--json', 'output in JSON format')
+      .action(async (id, options) => {
+        try {
+          const result = await deleteWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
+          process.exit(result.deleted ? EXIT_SUCCESS : EXIT_NOT_FOUND);
+        } catch {
+          process.exit(EXIT_ERROR);
+        }
       })
   )
   .addCommand(
     new Command('list')
       .description('list workflows')
       .option('--json', 'output in JSON format')
-      .action((options) => {
-        if (options.json) {
-          console.log(JSON.stringify({ workflows: [] }, null, 2));
-        } else {
-          console.log('No workflows found');
+      .option('--enabled', 'show only enabled workflows')
+      .option('--disabled', 'show only disabled workflows')
+      .option('--limit <number>', 'limit results', '50')
+      .option('--offset <number>', 'offset for pagination', '0')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .action(async (options) => {
+        try {
+          const enabled = options.enabled ? true : options.disabled ? false : undefined;
+          await listWorkflows(
+            { api: resolveApiConfig(options) },
+            {
+              enabled,
+              limit: Number.parseInt(options.limit, 10),
+              offset: Number.parseInt(options.offset, 10),
+              json: options.json,
+            },
+          );
+          process.exit(EXIT_SUCCESS);
+        } catch {
+          process.exit(EXIT_ERROR);
         }
-        process.exit(EXIT_SUCCESS);
+      })
+  )
+  .addCommand(
+    new Command('get')
+      .description('get a workflow')
+      .argument('<id>', 'workflow id')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .option('--json', 'output in JSON format')
+      .action(async (id, options) => {
+        try {
+          const result = await getWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
+          process.exit(result.found ? EXIT_SUCCESS : EXIT_NOT_FOUND);
+        } catch {
+          process.exit(EXIT_ERROR);
+        }
       })
   );
 
@@ -336,11 +435,13 @@ program
       .option('--limit <number>', 'limit results', '20')
       .option('--offset <number>', 'offset for pagination', '0')
       .option('--json', 'output in JSON format')
-      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
       .action(async (options) => {
         try {
           await listExecutions(
-            { dbPath: options.db },
+            { api: resolveApiConfig(options) },
             {
               workflowId: options.workflow,
               state: options.state,
@@ -366,10 +467,12 @@ program
       .option('--json', 'output in JSON format')
       .option('--pretty', 'pretty print JSON output')
       .option('--no-truncate', 'disable truncation of long values')
-      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
       .action(async (executionId, options) => {
         try {
-          await inspectExecution({ dbPath: options.db }, executionId, {
+          await inspectExecution({ api: resolveApiConfig(options) }, executionId, {
             showInputs: options.showInputs,
             timeline: options.timeline,
             audit: options.audit,
@@ -394,10 +497,12 @@ program
       .option('--follow', 'stream logs in real-time')
       .option('--json', 'output in JSON format')
       .option('--pretty', 'pretty print JSON output')
-      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
       .action(async (executionId, options) => {
         try {
-          await getExecutionLogs({ dbPath: options.db }, executionId, {
+          await getExecutionLogs({ api: resolveApiConfig(options) }, executionId, {
             level: options.level ? [options.level] : undefined,
             since: options.since,
             taskId: options.task,
@@ -419,11 +524,13 @@ program
       .option<any>('--state <state>', 'execution state to clean up (can be specified multiple times)', (value, previous) => previous.concat([value]), [])
       .option('--dry-run', 'show what would be deleted without actually deleting')
       .option('--json', 'output in JSON format')
-      .option('--db <path>', 'database path', DEFAULT_DB_PATH)
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
       .action(async (options) => {
         try {
           await cleanupExecutions(
-            { dbPath: options.db },
+            { api: resolveApiConfig(options) },
             {
               days: parseInt(options.days),
               states: options.state.length > 0 ? options.state : undefined,

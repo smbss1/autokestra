@@ -1,0 +1,13 @@
+id: daily_sync
+enabled: true
+apiVersion: v1
+
+trigger:
+  type: cron
+  cron: "* * * * *"
+
+tasks:
+  - id: save
+    type: core/console.log
+    inputs:
+      message: "Hello, world!"

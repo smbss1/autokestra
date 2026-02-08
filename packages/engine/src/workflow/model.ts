@@ -22,6 +22,7 @@ export interface WorkflowTask {
   id: string;
   type: string;
   needs: string[];
+  inputs?: Record<string, unknown>;
   retry?: RetryPolicy;
 }
 

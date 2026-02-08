@@ -1,9 +1,18 @@
 import type { Server } from 'bun';
 
-import { Engine } from '@autokestra/engine';
+import { Engine, runtime } from '@autokestra/engine';
 import type { Config } from '@autokestra/engine/src/config';
 
 import { createApp } from './app';
+
+function parsePluginPaths(): string[] {
+  const raw = process.env.AUTOKESTRA_PLUGIN_PATHS;
+  if (!raw) return ["./plugins"];
+  return raw
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
 
 export interface StartServerOptions {
   config: Config;
@@ -81,6 +90,17 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
     fetch: app.fetch,
   });
 
+  // Start the engine runtime (scheduling + execution). The server itself stays thin.
+  const runtimeDisabled = process.env.AUTOKESTRA_DISABLE_RUNTIME === '1';
+  const pluginPaths = parsePluginPaths();
+  const engineRuntime = runtimeDisabled
+    ? undefined
+    : runtime.startEngineRuntime({
+        engine,
+        pluginPaths,
+        silent: options.silent ?? false,
+      });
+
   if (!options.silent) {
     // eslint-disable-next-line no-console
     console.log(`Server running at http://${hostname}:${port}`);
@@ -105,6 +125,12 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
       // Stop accepting new connections.
       // Bun supports stop([closeActiveConnections]). Keep it compatible.
       (server as any).stop?.(true);
+    } catch {
+      // best-effort
+    }
+
+    try {
+      await engineRuntime?.stop();
     } catch {
       // best-effort
     }

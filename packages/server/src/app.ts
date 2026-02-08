@@ -30,6 +30,14 @@ function toWorkflowDto(workflow: StoredWorkflow) {
   };
 }
 
+function parseOptionalBooleanParam(url: URL, name: string): boolean | undefined {
+  const raw = url.searchParams.get(name);
+  if (raw == null) return undefined;
+  if (raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  throw new Error(`Invalid ${name}`);
+}
+
 function parseLimitOffset(url: URL, defaults: { limit: number; maxLimit: number }) {
   const limitRaw = url.searchParams.get('limit');
   const offsetRaw = url.searchParams.get('offset');
@@ -87,7 +95,9 @@ export function createApp(ctx: ServerContext) {
       const url = new URL(c.req.url);
       const { limit, offset } = parseLimitOffset(url, { limit: 50, maxLimit: 200 });
 
-      const result = await ctx.stateStore.listWorkflows({ limit, offset });
+      const enabled = parseOptionalBooleanParam(url, 'enabled');
+
+      const result = await ctx.stateStore.listWorkflows({ enabled, limit, offset });
       return c.json({
         workflows: result.items.map(toWorkflowDto),
         total: result.total,
@@ -237,6 +247,12 @@ export function createApp(ctx: ServerContext) {
   app.get('/api/v1/executions/:executionId', async (c) => {
     const executionId = c.req.param('executionId');
 
+    const url = new URL(c.req.url);
+    const includeInputsOutputs = parseOptionalBooleanParam(url, 'includeInputsOutputs') ?? false;
+    const includeAuditTrail = parseOptionalBooleanParam(url, 'includeAuditTrail') ?? false;
+    const includeTimeline = parseOptionalBooleanParam(url, 'includeTimeline') ?? false;
+    const taskId = url.searchParams.get('taskId') ?? undefined;
+
     const logStore = new LogStore({ db: ctx.db });
     const inspector = new ExecutionInspector(ctx.stateStore, logStore);
 
@@ -247,7 +263,70 @@ export function createApp(ctx: ServerContext) {
 
     const tasks = await inspector.getTaskDetails(executionId);
 
-    return c.json({ overview, tasks });
+    const response: any = { overview, tasks };
+    if (includeInputsOutputs) {
+      response.inputsOutputs = await inspector.getTaskInputsOutputs(executionId, taskId);
+    }
+    if (includeAuditTrail) {
+      response.auditTrail = inspector.getAuditTrail(executionId);
+    }
+    if (includeTimeline) {
+      response.timeline = await inspector.getTimeline(executionId);
+    }
+
+    return c.json(response);
+  });
+
+  app.post('/api/v1/executions/cleanup', async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(apiError('BAD_REQUEST', 'Expected JSON body'), 400);
+    }
+
+    const daysRaw = (body as any)?.days;
+    const dryRun = Boolean((body as any)?.dryRun);
+    const statesRaw = (body as any)?.states;
+
+    const days = daysRaw == null ? 30 : Number(daysRaw);
+    if (!Number.isFinite(days) || days <= 0) {
+      return c.json(apiError('VALIDATION_ERROR', 'days must be a positive number'), 400);
+    }
+
+    let states: ExecutionState[] | undefined;
+    if (statesRaw != null) {
+      if (!Array.isArray(statesRaw) || !statesRaw.every((s) => typeof s === 'string')) {
+        return c.json(apiError('VALIDATION_ERROR', 'states must be an array of strings'), 400);
+      }
+      states = statesRaw as ExecutionState[];
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - Math.floor(days));
+
+    if (dryRun) {
+      const result = await ctx.stateStore.listExecutions({
+        createdBefore: cutoffDate,
+        state: states as any,
+        limit: 1,
+        offset: 0,
+      });
+      return c.json({
+        dryRun: true,
+        cutoffDate: cutoffDate.toISOString(),
+        states,
+        wouldDelete: result.total,
+      });
+    }
+
+    const deleted = await ctx.stateStore.deleteExecutionsBefore(cutoffDate, states);
+    return c.json({
+      dryRun: false,
+      cutoffDate: cutoffDate.toISOString(),
+      states,
+      deleted,
+    });
   });
 
   app.get('/api/v1/executions/:executionId/logs', async (c) => {

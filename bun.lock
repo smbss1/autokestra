@@ -20,13 +20,16 @@
       "name": "@autokestra/cli",
       "version": "0.0.1",
       "bin": {
-        "workflow": "dist/index.js",
+        "workflow": "src/cli.ts",
+        "autokestra": "src/cli.ts",
+        "cli": "src/cli.ts",
       },
       "dependencies": {
         "@autokestra/engine": "workspace:*",
         "@autokestra/secrets": "workspace:*",
         "@autokestra/server": "workspace:*",
         "commander": "^12.0.0",
+        "yaml": "^2.8.2",
       },
       "devDependencies": {
         "@types/node": "^20.0.0",

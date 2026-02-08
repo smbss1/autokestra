@@ -12,3 +12,6 @@ export * as storage from './src/storage';
 
 // Logging and observability
 export * as logging from './src/execution/logging';
+
+// Engine runtime (scheduling / workflow execution)
+export * as runtime from './src/runtime';

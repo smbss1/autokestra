@@ -1,0 +1,23 @@
+name: console
+version: 0.1.0
+namespace: core
+description: "Official core console utilities"
+actions:
+  - name: log
+    description: "Log a message (goes to plugin stderr so the engine can capture it)"
+    input:
+      type: object
+      properties:
+        message:
+          type: string
+        level:
+          type: string
+      required: [message]
+    output:
+      type: object
+      properties:
+        message:
+          type: string
+        level:
+          type: string
+      required: [message]

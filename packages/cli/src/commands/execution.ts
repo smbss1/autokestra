@@ -1,34 +1,14 @@
-// CLI commands for execution management with StateStore integration
+// CLI commands for execution management (server API client)
 
-import { Engine } from '@autokestra/engine';
 import { ExecutionState, TaskRunState } from '@autokestra/engine/src/execution/types';
-import { LogStore, LogQueryFilters } from '@autokestra/engine/src/execution/logging';
-import { ExecutionInspector } from '@autokestra/engine/src/execution/inspector';
-import type { StateStore } from '@autokestra/engine/src/storage/types';
+import { ApiClientConfig, ApiError, requestJson } from '../apiClient';
 
-/**
- * Parse duration string like "5m", "2h", "1d" into milliseconds
- */
-function parseDuration(duration: string): number {
-  const match = duration.match(/^(\d+)([smhd])$/);
-  if (!match) {
-    throw new Error('Invalid time format. Examples: 5m, 2h, 1d');
-  }
+type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
-  const value = parseInt(match[1]);
-  const unit = match[2];
-
-  switch (unit) {
-    case 's': return value * 1000; // seconds
-    case 'm': return value * 60 * 1000; // minutes
-    case 'h': return value * 60 * 60 * 1000; // hours
-    case 'd': return value * 24 * 60 * 60 * 1000; // days
-    default: throw new Error('Invalid duration unit');
-  }
-}
+const LEVELS = new Set<LogLevel>(['DEBUG', 'INFO', 'WARN', 'ERROR']);
 
 export interface CliConfig {
-  dbPath: string;
+  api: ApiClientConfig;
 }
 
 export interface ExecutionListOptions {
@@ -64,7 +44,42 @@ export interface ExecutionCleanupOptions {
   json?: boolean;
 }
 
-const LEVELS = new Set(['DEBUG', 'INFO', 'WARN', 'ERROR']);
+type ExecutionListItemDto = {
+  executionId: string;
+  workflowId: string;
+  state: ExecutionState;
+  reasonCode?: string;
+  message?: string;
+  createdAt: string;
+  startedAt?: string;
+  endedAt?: string;
+  updatedAt: string;
+};
+
+type ExecutionListResponseDto = {
+  executions: ExecutionListItemDto[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+type ExecutionLogsItemDto = {
+  id: number;
+  executionId: string;
+  taskId?: string;
+  timestamp: number;
+  level: LogLevel;
+  source: string;
+  message: string;
+  metadata?: unknown;
+};
+
+type ExecutionLogsResponseDto = {
+  items: ExecutionLogsItemDto[];
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
 
 function isTty(): boolean {
   return Boolean(process.stdout.isTTY);
@@ -73,6 +88,25 @@ function isTty(): boolean {
 function colorize(text: string, colorCode: string): string {
   if (!isTty()) return text;
   return `\u001b[${colorCode}m${text}\u001b[0m`;
+}
+
+function formatStatus(status: TaskRunState | ExecutionState): string {
+  switch (status) {
+    case ExecutionState.SUCCESS:
+    case TaskRunState.SUCCESS:
+      return colorize(status, '32');
+    case ExecutionState.FAILED:
+    case TaskRunState.FAILED:
+      return colorize(status, '31');
+    case ExecutionState.RUNNING:
+    case TaskRunState.RUNNING:
+      return colorize(status, '33');
+    case ExecutionState.PENDING:
+    case TaskRunState.PENDING:
+      return colorize(status, '90');
+    default:
+      return status;
+  }
 }
 
 function formatDuration(ms?: number): string {
@@ -94,387 +128,7 @@ function truncateValue(value: string, maxLength: number, noTruncate?: boolean): 
   return `${value.slice(0, maxLength)}... (truncated)`;
 }
 
-function formatStatus(status: TaskRunState | ExecutionState): string {
-  switch (status) {
-    case ExecutionState.SUCCESS:
-    case TaskRunState.SUCCESS:
-      return colorize(status, '32'); // green
-    case ExecutionState.FAILED:
-    case TaskRunState.FAILED:
-      return colorize(status, '31'); // red
-    case ExecutionState.RUNNING:
-    case TaskRunState.RUNNING:
-      return colorize(status, '33'); // yellow
-    case ExecutionState.PENDING:
-    case TaskRunState.PENDING:
-      return colorize(status, '90'); // gray
-    default:
-      return status;
-  }
-}
-
-/**
- * Clean up old executions from the state store
- */
-export async function cleanupExecutions(
-  config: CliConfig,
-  options: ExecutionCleanupOptions = {}
-): Promise<void> {
-  const engine = new Engine({
-    storage: { path: config.dbPath },
-    silent: true, // Suppress engine logging
-  });
-
-  try {
-    await engine.initialize();
-    const stateStore = engine.getStateStore();
-
-    const retentionDays = options.days || 30;
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
-
-    const states = options.states?.map(s => s as ExecutionState) || [
-      ExecutionState.SUCCESS,
-      ExecutionState.FAILED,
-      ExecutionState.CANCELLED,
-    ];
-
-    if (options.dryRun) {
-      // Just count what would be deleted
-      const result = await stateStore.listExecutions({
-        createdBefore: cutoffDate,
-        state: states,
-      });
-
-      if (options.json) {
-        console.log(JSON.stringify({
-          dryRun: true,
-          cutoffDate: cutoffDate.toISOString(),
-          states,
-          wouldDelete: result.total,
-        }, null, 2));
-      } else {
-        console.log(`Dry run: Would delete ${result.total} executions older than ${cutoffDate.toISOString()}`);
-        console.log(`States: ${states.join(', ')}`);
-      }
-    } else {
-      // Actually delete
-      const deletedCount = await stateStore.deleteExecutionsBefore(cutoffDate, states);
-
-      if (options.json) {
-        console.log(JSON.stringify({
-          deleted: deletedCount,
-          cutoffDate: cutoffDate.toISOString(),
-          states,
-        }, null, 2));
-      } else {
-        console.log(`Deleted ${deletedCount} executions older than ${cutoffDate.toISOString()}`);
-        console.log(`States: ${states.join(', ')}`);
-      }
-    }
-  } finally {
-    await engine.shutdown();
-  }
-}
-
-/**
- * List executions from the state store
- */
-export async function listExecutions(
-  config: CliConfig,
-  options: ExecutionListOptions = {}
-): Promise<void> {
-  const engine = new Engine({
-    storage: { path: config.dbPath },
-    silent: true, // Suppress engine logging
-  });
-
-  try {
-    await engine.initialize();
-    const stateStore = engine.getStateStore();
-
-    const result = await stateStore.listExecutions({
-      workflowId: options.workflowId,
-      state: options.state as ExecutionState | undefined,
-      limit: options.limit || 20,
-      offset: options.offset || 0,
-    });
-
-    if (options.json) {
-      console.log(
-        JSON.stringify(
-          {
-            executions: result.items.map((e) => ({
-              executionId: e.executionId,
-              workflowId: e.workflowId,
-              state: e.state,
-              createdAt: e.timestamps.createdAt,
-              startedAt: e.timestamps.startedAt,
-              endedAt: e.timestamps.endedAt,
-            })),
-            total: result.total,
-          },
-          null,
-          2
-        )
-      );
-    } else {
-      if (result.items.length === 0) {
-        console.log('No executions found');
-        return;
-      }
-
-      console.log(`Found ${result.total} execution(s):\n`);
-      for (const exec of result.items) {
-        const duration = exec.timestamps.endedAt
-          ? `${exec.timestamps.endedAt.getTime() - exec.timestamps.createdAt.getTime()}ms`
-          : 'ongoing';
-        console.log(
-          `  ${exec.executionId} [${exec.state}] - workflow: ${exec.workflowId} - duration: ${duration}`
-        );
-      }
-    }
-  } finally {
-    await engine.shutdown();
-  }
-}
-
-/**
- * Inspect a specific execution
- */
-export async function inspectExecution(
-  config: CliConfig,
-  executionId: string,
-  options: ExecutionInspectOptions = {}
-): Promise<void> {
-  const engine = new Engine({
-    storage: { path: config.dbPath },
-    silent: true,
-  });
-
-  try {
-    await engine.initialize();
-    const stateStore = engine.getStateStore();
-    const logStore = new LogStore({ db: engine.getDatabase() });
-    const inspector = new ExecutionInspector(stateStore, logStore);
-
-    const overview = await inspector.getExecutionOverview(executionId);
-    if (!overview) {
-      throw new Error(`Execution not found: ${executionId}`);
-    }
-
-    const tasks = await inspector.getTaskDetails(executionId);
-    const inputsOutputs = await inspector.getTaskInputsOutputs(executionId);
-    const auditTrail = options.audit ? inspector.getAuditTrail(executionId) : undefined;
-    const timeline = options.timeline ? await inspector.getTimeline(executionId) : undefined;
-
-    if (options.json) {
-      const output = {
-        execution: overview,
-        tasks,
-        inputsOutputs,
-        ...(auditTrail ? { auditTrail } : {}),
-        ...(timeline ? { timeline } : {}),
-      };
-
-      console.log(options.pretty ? JSON.stringify(output, null, 2) : JSON.stringify(output));
-      return;
-    }
-
-    console.log(`\nExecution: ${overview.executionId}`);
-    console.log(`Workflow: ${overview.workflowId}`);
-    console.log(`State: ${formatStatus(overview.status)}`);
-    if (overview.reasonCode) {
-      console.log(`Reason: ${overview.reasonCode}`);
-    }
-    if (overview.message) {
-      console.log(`Message: ${overview.message}`);
-    }
-    console.log(`Created: ${overview.createdAt}`);
-    if (overview.startedAt) {
-      console.log(`Started: ${overview.startedAt}`);
-    }
-    if (overview.endedAt) {
-      console.log(`Ended: ${overview.endedAt}`);
-    }
-    console.log(`Duration: ${formatDuration(overview.durationMs)}`);
-
-    if (tasks.length > 0) {
-      console.log(`\nTasks (${tasks.length}):`);
-      const headers = ['Task ID', 'Type', 'Status', 'Duration', 'Start', 'End'];
-      const rows = tasks.map((task) => [
-        task.taskId,
-        task.type || '-',
-        task.status === TaskRunState.RUNNING ? `⏳ ${formatStatus(task.status)}` : formatStatus(task.status),
-        formatDuration(task.durationMs),
-        task.startedAt || '-',
-        task.endedAt || '-',
-      ]);
-
-      const columnWidths = headers.map((header, index) =>
-        Math.max(header.length, ...rows.map((row) => row[index].length))
-      );
-
-      const formatRow = (row: string[]) =>
-        row.map((cell, i) => cell.padEnd(columnWidths[i])).join('  ');
-
-      console.log(formatRow(headers));
-      console.log(formatRow(headers.map((h, i) => '-'.repeat(columnWidths[i]))));
-      for (const row of rows) {
-        console.log(formatRow(row));
-      }
-    }
-
-    const ioByTask = new Map(inputsOutputs.map((io) => [io.taskId, io]));
-    if (options.showInputs || tasks.some((task) => task.status !== TaskRunState.PENDING)) {
-      console.log(`\nTask Details:`);
-      for (const task of tasks) {
-        const io = ioByTask.get(task.taskId);
-        if (!io) continue;
-
-        const outputs = io.outputs ? JSON.stringify(io.outputs) : '';
-        const inputs = io.inputs ? JSON.stringify(io.inputs) : '';
-        const error = io.error ? JSON.stringify(io.error) : '';
-
-        console.log(`\n${task.taskId}`);
-        if (options.showInputs && inputs) {
-          console.log(`  Inputs: ${truncateValue(inputs, 200, options.noTruncate)}`);
-        }
-        if (outputs) {
-          console.log(`  Outputs: ${truncateValue(outputs, 200, options.noTruncate)}`);
-        }
-        if (error) {
-          console.log(`  Error: ${truncateValue(error, 200, options.noTruncate)}`);
-        }
-        if (task.retryReasons && task.retryReasons.length > 0) {
-          console.log(`  Retries: ${task.retryReasons.map(r => `${r.attempt} (${r.reason})`).join(', ')}`);
-        }
-      }
-    }
-
-    if (timeline && timeline.length > 0) {
-      console.log(`\nTimeline:`);
-      for (const entry of timeline) {
-        const barLength = Math.max(1, Math.round(entry.durationMs / 100));
-        console.log(`  ${entry.taskId.padEnd(20)} |${'█'.repeat(barLength)}| ${formatDuration(entry.durationMs)}`);
-      }
-    }
-
-    if (auditTrail && auditTrail.length > 0) {
-      console.log(`\nAudit Trail (${auditTrail.length} events):`);
-      for (const event of auditTrail) {
-        const timestamp = new Date(event.timestamp).toISOString();
-        console.log(`  ${timestamp} ${event.eventType}`);
-        if (event.metadata && Object.keys(event.metadata).length > 0) {
-          console.log(`    ${truncateValue(JSON.stringify(event.metadata), 200, options.noTruncate)}`);
-        }
-      }
-    }
-  } finally {
-    await engine.shutdown();
-  }
-}
-
-/**
- * Get logs for an execution (task run outputs)
- */
-export async function getExecutionLogs(
-  config: CliConfig,
-  executionId: string,
-  options: ExecutionLogsOptions = {}
-): Promise<void> {
-  const engine = new Engine({
-    storage: { path: config.dbPath },
-    silent: true,
-  });
-
-  try {
-    await engine.initialize();
-    const stateStore = engine.getStateStore();
-    const logStore = new LogStore({ db: engine.getDatabase() });
-
-    if (options.json && options.follow) {
-      throw new Error('--json cannot be used with --follow');
-    }
-
-    // Verify execution exists
-    const execution = await stateStore.getExecution(executionId);
-    if (!execution) {
-      throw new Error(`Execution not found: ${executionId}`);
-    }
-
-    const levels = options.level?.flatMap((l) => l.split(',').map(v => v.trim()).filter(Boolean)) || [];
-    if (levels.length > 0 && levels.some(level => !LEVELS.has(level))) {
-      throw new Error('Invalid log level. Must be one of: DEBUG, INFO, WARN, ERROR');
-    }
-
-    const filters: LogQueryFilters = {
-      level: levels.length > 0 ? levels : undefined,
-      taskId: options.taskId,
-      since: options.since ? parseDuration(options.since) : undefined,
-    };
-
-    if (options.follow) {
-      await streamExecutionLogs(stateStore, logStore, executionId, filters);
-      return;
-    }
-
-    const allLogs: any[] = [];
-    let printedAny = false;
-    let offset = 0;
-    const limit = 1000;
-    while (true) {
-      const batch = logStore.getLogsByExecution(executionId, filters, { limit, offset });
-      if (batch.length === 0) break;
-
-      if (options.json) {
-        allLogs.push(...batch);
-      } else {
-        printLogBatch(batch);
-        printedAny = true;
-      }
-
-      if (batch.length < limit) break;
-      offset += limit;
-    }
-
-    if (options.json) {
-      const output = options.pretty ? JSON.stringify(allLogs, null, 2) : JSON.stringify(allLogs);
-      console.log(output);
-      return;
-    }
-
-    if (!printedAny && offset === 0) {
-      if (options.taskId) {
-        console.log(`No logs found for task ${options.taskId} in execution ${executionId}`);
-      } else {
-        console.log(`No logs found for execution ${executionId}`);
-      }
-      return;
-    }
-  } finally {
-    await engine.shutdown();
-  }
-}
-
-function printLogBatch(logs: Array<{ timestamp: number; level: string; source: string; message: string; taskId?: string }>): void {
-  for (const log of logs) {
-    const timestamp = new Date(log.timestamp).toISOString();
-    const level = formatLogLevel(log.level);
-    const source = `[${log.source}]`;
-    const taskInfo = log.taskId ? `[${log.taskId}] ` : '';
-    const lines = log.message.split('\n');
-
-    if (lines.length > 0) {
-      console.log(`${timestamp} ${level} ${source} ${taskInfo}${lines[0]}`);
-      for (const line of lines.slice(1)) {
-        console.log(`  ${line}`);
-      }
-    }
-  }
-}
-
-function formatLogLevel(level: string): string {
+function formatLogLevel(level: LogLevel): string {
   switch (level) {
     case 'ERROR':
       return colorize(level, '31');
@@ -487,102 +141,286 @@ function formatLogLevel(level: string): string {
   }
 }
 
-async function streamExecutionLogs(
-  stateStore: StateStore,
-  logStore: LogStore,
-  executionId: string,
-  filters: LogQueryFilters
-): Promise<void> {
-  let stop = false;
-  const onSigInt = () => { stop = true; };
-  process.on('SIGINT', onSigInt);
+function normalizeLevels(levels?: string[]): LogLevel[] | undefined {
+  const normalized = (levels || [])
+    .flatMap((l) => l.split(',').map((v) => v.trim()).filter(Boolean))
+    .map((l) => l.toUpperCase() as LogLevel);
 
-  const iterator = logStore.streamLogsByExecution(executionId, filters, 100);
-  const interval = setInterval(async () => {
-    const execution = await stateStore.getExecution(executionId);
-    if (execution && [ExecutionState.SUCCESS, ExecutionState.FAILED, ExecutionState.CANCELLED].includes(execution.state)) {
-      stop = true;
-      if (iterator.return) {
-        await iterator.return();
-      }
-    }
-  }, 100);
+  if (normalized.length === 0) return undefined;
+  if (normalized.some((l) => !LEVELS.has(l))) {
+    throw new Error('Invalid log level. Must be one of: DEBUG, INFO, WARN, ERROR');
+  }
+  return normalized;
+}
 
-  try {
-    for await (const log of iterator) {
-      if (stop) {
-        process.exitCode = 130;
-        return;
-      }
-
-      printLogBatch([log]);
-    }
-  } finally {
-    clearInterval(interval);
-    process.off('SIGINT', onSigInt);
+function parseDuration(duration: string): number {
+  const match = duration.match(/^(\d+)([smhd])$/);
+  if (!match) throw new Error('Invalid time format. Examples: 5m, 2h, 1d');
+  const value = Number.parseInt(match[1], 10);
+  const unit = match[2];
+  switch (unit) {
+    case 's':
+      return value * 1000;
+    case 'm':
+      return value * 60 * 1000;
+    case 'h':
+      return value * 60 * 60 * 1000;
+    case 'd':
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      throw new Error('Invalid duration unit');
   }
 }
 
-/**
- * Stream logs for a running execution in real-time
- */
-async function streamLogs(engine: Engine, executionId: string, options: ExecutionLogsOptions): Promise<void> {
-  const stateStore = engine.getStateStore();
-  const logStore = new LogStore({ db: engine.getDatabase() });
+export async function cleanupExecutions(config: CliConfig, options: ExecutionCleanupOptions = {}): Promise<void> {
+  const days = options.days ?? 30;
+  const states = options.states;
+  const dryRun = Boolean(options.dryRun);
 
-  let lastTimestamp = Date.now();
-  let executionCompleted = false;
+  const result = await requestJson<any>(config.api, 'POST', '/api/v1/executions/cleanup', {
+    body: { days, states, dryRun },
+  });
 
-  console.log(`\nStreaming logs for execution: ${executionId}`);
-  console.log('Press Ctrl+C to stop\n');
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
 
-  // Stream logs until execution completes or user interrupts
-  while (!executionCompleted) {
-    try {
-      // Check if execution is still running
-      const execution = await stateStore.getExecution(executionId);
-      if (!execution) {
-        console.error(`Execution ${executionId} not found`);
-        return;
-      }
+  if (dryRun) {
+    console.log(`Dry run: Would delete ${result.wouldDelete ?? 0} executions older than ${result.cutoffDate}`);
+    if (Array.isArray(result.states) && result.states.length > 0) {
+      console.log(`States: ${result.states.join(', ')}`);
+    }
+    return;
+  }
 
-      if (execution.state === ExecutionState.SUCCESS ||
-          execution.state === ExecutionState.FAILED ||
-          execution.state === ExecutionState.CANCELLED) {
-        executionCompleted = true;
-        console.log(`\nExecution ${execution.state.toLowerCase()}`);
-        break;
-      }
+  console.log(`Deleted ${result.deleted ?? 0} executions older than ${result.cutoffDate}`);
+  if (Array.isArray(result.states) && result.states.length > 0) {
+    console.log(`States: ${result.states.join(', ')}`);
+  }
+}
 
-      // Get new logs since last check
-      const newLogs = logStore.getLogsByExecution(executionId, {}, {
-        limit: 1000 // Get up to 1000 new logs per poll
-      }).filter(log => log.timestamp > lastTimestamp);
+export async function listExecutions(config: CliConfig, options: ExecutionListOptions = {}): Promise<void> {
+  const result = await requestJson<ExecutionListResponseDto>(config.api, 'GET', '/api/v1/executions', {
+    query: {
+      workflowId: options.workflowId,
+      state: options.state,
+      limit: options.limit ?? 20,
+      offset: options.offset ?? 0,
+    },
+  });
 
-      // Display new logs
-      for (const log of newLogs) {
-        const timestamp = new Date(log.timestamp).toISOString();
-        const taskInfo = log.taskId ? `[${log.taskId}] ` : '';
-        const level = log.level.padEnd(5);
-        console.log(`${timestamp} ${level} ${log.source} ${taskInfo}${log.message}`);
-        if (log.metadata && Object.keys(log.metadata).length > 0) {
-          console.log(`  ${JSON.stringify(log.metadata)}`);
-        }
-      }
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
 
-      // Update last timestamp
-      if (newLogs.length > 0) {
-        lastTimestamp = Math.max(...newLogs.map(log => log.timestamp));
-      }
+  if (result.executions.length === 0) {
+    console.log('No executions found');
+    return;
+  }
 
-      // Wait before next poll (100ms)
-      await new Promise(resolve => setTimeout(resolve, 100));
+  console.log(`Found ${result.total} execution(s):\n`);
+  for (const exec of result.executions) {
+    const created = Date.parse(exec.createdAt);
+    const ended = exec.endedAt ? Date.parse(exec.endedAt) : undefined;
+    const duration = ended && Number.isFinite(created) ? `${ended - created}ms` : exec.endedAt ? '-' : 'ongoing';
+    console.log(`  ${exec.executionId} [${exec.state}] - workflow: ${exec.workflowId} - duration: ${duration}`);
+  }
+}
 
-    } catch (error) {
-      console.error('Error streaming logs:', error);
-      break;
+export async function inspectExecution(config: CliConfig, executionId: string, options: ExecutionInspectOptions = {}): Promise<void> {
+  let inspection: any;
+  try {
+    inspection = await requestJson<any>(config.api, 'GET', `/api/v1/executions/${encodeURIComponent(executionId)}`, {
+      query: {
+        includeInputsOutputs: options.showInputs ? true : undefined,
+        includeAuditTrail: options.audit ? true : undefined,
+        includeTimeline: options.timeline ? true : undefined,
+      },
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      throw new Error(`Execution not found: ${executionId}`);
+    }
+    throw error;
+  }
+
+  const overview = inspection.overview;
+  const tasks = Array.isArray(inspection.tasks) ? inspection.tasks : [];
+  const inputsOutputs = Array.isArray(inspection.inputsOutputs) ? inspection.inputsOutputs : undefined;
+  const auditTrail = Array.isArray(inspection.auditTrail) ? inspection.auditTrail : undefined;
+  const timeline = Array.isArray(inspection.timeline) ? inspection.timeline : undefined;
+
+  if (options.json) {
+    const output = {
+      execution: overview,
+      tasks,
+      ...(inputsOutputs ? { inputsOutputs } : {}),
+      ...(auditTrail ? { auditTrail } : {}),
+      ...(timeline ? { timeline } : {}),
+    };
+    console.log(options.pretty ? JSON.stringify(output, null, 2) : JSON.stringify(output));
+    return;
+  }
+
+  console.log(`\nExecution: ${overview.executionId}`);
+  console.log(`Workflow: ${overview.workflowId}`);
+  console.log(`State: ${formatStatus(overview.status)}`);
+  if (overview.reasonCode) console.log(`Reason: ${overview.reasonCode}`);
+  if (overview.message) console.log(`Message: ${overview.message}`);
+  console.log(`Created: ${overview.createdAt}`);
+  if (overview.startedAt) console.log(`Started: ${overview.startedAt}`);
+  if (overview.endedAt) console.log(`Ended: ${overview.endedAt}`);
+  console.log(`Duration: ${formatDuration(overview.durationMs)}`);
+
+  if (tasks.length > 0) {
+    console.log(`\nTasks (${tasks.length}):`);
+    const headers = ['Task ID', 'Type', 'Status', 'Duration', 'Start', 'End'];
+    const rows = tasks.map((task: any) => [
+      String(task.taskId),
+      String(task.type || '-'),
+      task.status === TaskRunState.RUNNING ? `⏳ ${formatStatus(task.status)}` : formatStatus(task.status),
+      formatDuration(task.durationMs),
+      String(task.startedAt || '-'),
+      String(task.endedAt || '-'),
+    ]);
+    const columnWidths = headers.map((header, index) => Math.max(header.length, ...rows.map((row: any) => row[index].length)));
+    const formatRow = (row: string[]) => row.map((cell, i) => cell.padEnd(columnWidths[i])).join('  ');
+
+    console.log(formatRow(headers));
+    console.log(columnWidths.map((w) => '-'.repeat(w)).join('  '));
+    for (const row of rows) console.log(formatRow(row));
+  }
+
+  if (options.showInputs && inputsOutputs && inputsOutputs.length > 0) {
+    console.log(`\nTask Inputs/Outputs:`);
+    for (const io of inputsOutputs) {
+      console.log(`\n  Task: ${io.taskId}`);
+      if (io.inputs) console.log(`    Inputs: ${truncateValue(JSON.stringify(io.inputs), 200, options.noTruncate)}`);
+      if (io.outputs) console.log(`    Outputs: ${truncateValue(JSON.stringify(io.outputs), 200, options.noTruncate)}`);
+      if (io.error) console.log(`    Error: ${truncateValue(JSON.stringify(io.error), 200, options.noTruncate)}`);
     }
   }
 
-  console.log('\nLog streaming completed');
+  if (options.timeline && timeline) {
+    console.log(`\nTimeline:`);
+    for (const entry of timeline) {
+      console.log(
+        `  ${entry.taskId}: ${entry.startOffsetMs}ms -> ${entry.endOffsetMs}ms (${entry.durationMs}ms) [${entry.status}]`,
+      );
+    }
+  }
+
+  if (options.audit && auditTrail) {
+    console.log(`\nAudit Trail:`);
+    for (const event of auditTrail) {
+      console.log(`  [${new Date(event.timestamp).toISOString()}] ${event.action}: ${event.details || ''}`);
+    }
+  }
+}
+
+function printLogBatch(logs: ExecutionLogsItemDto[]): void {
+  for (const log of logs) {
+    const timestamp = new Date(log.timestamp).toISOString();
+    const level = formatLogLevel(log.level);
+    const source = `[${log.source}]`;
+    const taskInfo = log.taskId ? `[${log.taskId}] ` : '';
+    const lines = String(log.message || '').split('\n');
+    if (lines.length > 0) {
+      console.log(`${timestamp} ${level} ${source} ${taskInfo}${lines[0]}`);
+      for (const line of lines.slice(1)) console.log(`  ${line}`);
+    }
+  }
+}
+
+async function fetchLogsPage(
+  config: CliConfig,
+  executionId: string,
+  options: ExecutionLogsOptions,
+  paging: { limit: number; offset: number },
+): Promise<ExecutionLogsResponseDto> {
+  const levels = normalizeLevels(options.level);
+  const query: Record<string, any> = {
+    limit: paging.limit,
+    offset: paging.offset,
+    taskId: options.taskId,
+  };
+
+  // Server accepts repeated level params or comma-separated; keep it simple.
+  if (levels && levels.length > 0) {
+    query.level = levels.join(',');
+  }
+
+  return await requestJson<ExecutionLogsResponseDto>(
+    config.api,
+    'GET',
+    `/api/v1/executions/${encodeURIComponent(executionId)}/logs`,
+    { query },
+  );
+}
+
+export async function getExecutionLogs(config: CliConfig, executionId: string, options: ExecutionLogsOptions = {}): Promise<void> {
+  if (options.json && options.follow) {
+    throw new Error('--json cannot be used with --follow');
+  }
+
+  const sinceMs = options.since ? parseDuration(options.since) : undefined;
+  const cutoff = sinceMs ? Date.now() - sinceMs : undefined;
+
+  if (options.follow) {
+    const seen = new Set<number>();
+    // Prime with a first fetch.
+    while (true) {
+      const page = await fetchLogsPage(config, executionId, options, { limit: 200, offset: 0 });
+      const newOnes = page.items
+        .filter((i) => !seen.has(i.id))
+        .filter((i) => (cutoff ? i.timestamp >= cutoff : true))
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      for (const item of newOnes) seen.add(item.id);
+      if (newOnes.length > 0) printLogBatch(newOnes);
+
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
+  const all: ExecutionLogsItemDto[] = [];
+  let printedAny = false;
+  let offset = 0;
+  const limit = 1000;
+
+  while (true) {
+    const page = await fetchLogsPage(config, executionId, options, { limit, offset });
+    const items = page.items
+      .filter((i) => (cutoff ? i.timestamp >= cutoff : true))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    if (page.items.length === 0) break;
+
+    if (options.json) {
+      all.push(...items);
+    } else {
+      if (items.length > 0) {
+        printLogBatch(items);
+        printedAny = true;
+      }
+    }
+
+    if (!page.hasMore) break;
+    offset += limit;
+  }
+
+  if (options.json) {
+    console.log(options.pretty ? JSON.stringify(all, null, 2) : JSON.stringify(all));
+    return;
+  }
+
+  if (!printedAny) {
+    if (options.taskId) {
+      console.log(`No logs found for task ${options.taskId} in execution ${executionId}`);
+    } else {
+      console.log(`No logs found for execution ${executionId}`);
+    }
+  }
 }
