@@ -39,7 +39,17 @@ function createRuntimeLogger(): Logger {
 const logAction = defineAction<{ message: string; level?: string }, { message: string; level: string }>({
   async execute(input, context) {
     const level = toLevel(input?.level);
-    const message = typeof input?.message === 'string' ? input.message : String(input?.message ?? '');
+    const rawMessage = (input as any)?.message;
+    const message =
+      typeof rawMessage === 'string'
+        ? rawMessage
+        : (() => {
+            try {
+              return JSON.stringify(rawMessage);
+            } catch {
+              return String(rawMessage ?? '');
+            }
+          })();
 
     // Emit at requested level via SDK logger.
     if (level === 'ERROR') context.log.error(message);

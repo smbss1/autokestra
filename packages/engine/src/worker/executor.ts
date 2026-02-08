@@ -80,12 +80,31 @@ export class WorkflowTaskExecutor implements TaskExecutor {
         const [namespace, pluginAction] = payload.type.split('/');
         const [pluginName, actionName] = pluginAction.split('.');
 
+        // Build template context for resolving {{ tasks.* }} references.
+        // This is best-effort and based on persisted task runs.
+        let tasksContext: Record<string, any> | undefined;
+        if (this.stateStore && executionId) {
+          try {
+            const taskRuns = await this.stateStore.listTaskRuns({ executionId, limit: 1000, offset: 0 });
+            tasksContext = {};
+            for (const tr of taskRuns.items) {
+              (tasksContext as any)[tr.taskId] = {
+                output: tr.outputs,
+                outputs: tr.outputs,
+                state: tr.state,
+              };
+            }
+          } catch {
+            // ignore - template context will just omit tasks
+          }
+        }
+
         const result = await this.pluginExecutor.execute(
           namespace,
           pluginName,
           actionName,
           resolvedInputs,
-          { secrets: {}, vars: {}, env: process.env },
+          { secrets: {}, vars: {}, env: process.env, ...(tasksContext ? { tasks: tasksContext } : {}) },
           undefined, // timeoutMs
           this.logCollector ? {
             logCollector: this.logCollector,
