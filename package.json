@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "bun run build --filter='*'",
+    "build:exe": "bun build packages/cli/index.ts --compile --outfile autokestra",
     "test": "bun test",
     "lint": "bun run eslint packages/**/*.ts",
     "format": "bun run prettier --write packages/**/*.ts"

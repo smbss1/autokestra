@@ -4,6 +4,10 @@ A self-hosted, lightweight, secure, and extensible workflow engine inspired by K
 
 ## Quick Start
 
+For the v0.1 user journey (server start → apply workflow → inspect/log), see:
+- docs/v0.1-quickstart.md
+- docs/v0.1-release-gate.md
+
 ### Prerequisites
 
 - [Bun](https://bun.sh/) (latest version recommended)

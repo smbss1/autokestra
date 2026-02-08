@@ -1,0 +1,7 @@
+apiVersion: v1
+id: v01-happy
+enabled: true
+tasks:
+  - id: t1
+    type: example/plugin.action
+    needs: []

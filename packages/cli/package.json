@@ -4,10 +4,13 @@
   "description": "Command-line interface",
   "main": "index.ts",
   "bin": {
-    "workflow": "dist/index.js"
+    "workflow": "src/cli.ts",
+    "autokestra": "src/cli.ts",
+    "cli": "src/cli.ts"
   },
   "scripts": {
     "build": "bun build index.ts --outdir dist --target bun",
+    "build:exe": "bun build index.ts --compile --outfile dist/autokestra",
     "lint": "bunx eslint src/**/*.ts",
     "format": "bunx prettier --write src/**/*.ts"
   },
