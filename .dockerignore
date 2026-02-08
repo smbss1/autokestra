@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/.cache
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/.autokestra
+.git
+.gitignore
+.vscode
+.DS_Store

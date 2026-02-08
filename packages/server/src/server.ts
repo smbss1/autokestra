@@ -21,7 +21,7 @@ export interface StartServerOptions {
 }
 
 export interface ManagedServer {
-  server: Server;
+  server: Server<any>;
   /**
    * Gracefully stops accepting traffic, closes resources, and shuts down the Engine.
    * Safe to call multiple times.
@@ -51,7 +51,7 @@ function requireApiKeys(config: Config): string[] {
   return normalized;
 }
 
-export async function startServer(options: StartServerOptions): Promise<Server> {
+export async function startServer(options: StartServerOptions): Promise<Server<any>> {
   const managed = await startManagedServer({ ...options, handleSignals: false });
   return managed.server;
 }

@@ -1,0 +1,28 @@
+services:
+  autokestra-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: autokestra-server:local
+    ports:
+      - "7233:7233"
+    environment:
+      # Where the server reads its YAML config from.
+      AUTOKESTRA_CONFIG: /config/config.yaml
+
+      # Keep config.example.yaml unchanged: override the sqlite path inside the container.
+      WORKFLOW_STORAGE_PATH: /data/db.sqlite
+
+      # Secrets DB (encrypted values). Use the same volume as state DB for easy backups.
+      SECRETS_DB_PATH: /data/secrets.db
+
+      # If you mount plugins elsewhere, set this.
+      AUTOKESTRA_PLUGIN_PATHS: /plugins
+
+      # Dev-only example key (64 hex chars). For real deployments, set your own.
+      AUTOKESTRA_SECRET_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    volumes:
+      - ./config.example.yaml:/config/config.yaml:ro
+      - ./data:/data
+      - ./plugins:/plugins:ro

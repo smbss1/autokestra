@@ -1,7 +1,11 @@
 node_modules
+**/node_modules
 dist
+**/dist
 coverage
-*.sqlite
+**/*.sqlite
+**/*.sqlite-*
 autokestra
-*.db-*
-.autokestra
+**/*.db
+**/*.db-*
+**/.autokestra
