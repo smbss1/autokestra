@@ -6,6 +6,8 @@ server:
   port: 7233
   # Optional: server host (defaults to 0.0.0.0)
   # host: "127.0.0.1"
+  # Optional: public base URL for clients (useful behind a reverse proxy / custom domain)
+  # publicUrl: "https://autokestra.example.com"
   # API keys for authenticating /api/v1/* requests (secure-by-default)
   # Clients can send either:
   # - Authorization: Bearer <apiKey>

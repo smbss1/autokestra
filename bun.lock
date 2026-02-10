@@ -29,6 +29,7 @@
         "@autokestra/engine": "workspace:*",
         "@autokestra/server": "workspace:*",
         "commander": "^12.0.0",
+        "valibot": "^1.2.0",
         "yaml": "^2.8.2",
       },
       "devDependencies": {

@@ -3,6 +3,11 @@ import { object, number, string, union, literal, optional, pipe, minValue, maxVa
 export interface ServerConfig {
   port: number;
   host?: string;
+  /**
+   * Optional client-facing base URL for the server (e.g. when behind a reverse proxy).
+   * Example: https://autokestra.example.com
+   */
+  publicUrl?: string;
   apiKeys?: string[];
 }
 
@@ -57,6 +62,7 @@ export const DEFAULT_CONFIG: Config = {
 export const serverConfigSchema = object({
   port: pipe(number(), minValue(1), maxValue(65535)),
   host: optional(string()),
+  publicUrl: optional(string()),
   apiKeys: optional(array(string())),
 });
 

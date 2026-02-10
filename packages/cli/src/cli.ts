@@ -3,12 +3,14 @@ import { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import * as fsSync from 'node:fs';
 import * as fs from 'node:fs/promises';
+import { isIP } from 'node:net';
 import * as path from 'node:path';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
 import { applyWorkflow, deleteWorkflow, getWorkflow, listWorkflows } from './commands/workflow';
 import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
 import { startManagedServer } from '@autokestra/server';
 import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
+import { safeParse, pipe, string, minLength, check } from 'valibot';
 import type { ApiClientConfig } from './apiClient';
 
 const VERSION = "0.0.1";
@@ -34,32 +36,152 @@ function configExists(filePath: string): boolean {
 }
 
 function resolveApiConfig(options: any): ApiClientConfig {
-  const configPath = typeof options.config === 'string' ? options.config : './config.yaml';
+  const nonEmptyStringSchema = pipe(
+    string(),
+    check((value: string) => value.trim().length > 0, 'Value must be a non-empty string'),
+  );
+
+  const httpUrlSchema = pipe(
+    string(),
+    check((value: string) => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    }, 'Server must be a valid http(s) URL (e.g. http://127.0.0.1:7233)'),
+  );
+
+  function parseOrThrow<T>(schema: any, value: unknown, label: string): T {
+    const result = safeParse(schema, value);
+    if (!result.success) {
+      const msg = result.issues?.[0]?.message || 'Invalid value';
+      throw new Error(`${label}: ${msg}`);
+    }
+    return result.output as T;
+  }
+
+  function normalizeServerHostForClient(rawHost: string | undefined): string {
+    const host = (rawHost || '').trim();
+    if (!host || host === '0.0.0.0' || host === '::') return '127.0.0.1';
+    return host;
+  }
+
+  function formatHostForUrl(host: string): string {
+    const ipVersion = isIP(host);
+    if (ipVersion === 6) {
+      return host.startsWith('[') ? host : `[${host}]`;
+    }
+    return host;
+  }
+
+  function normalizeServerInputToBaseUrl(rawValue: string): string {
+    const value = rawValue.trim();
+    if (!value) return value;
+
+    // If already a URL, keep it.
+    if (/^https?:\/\//i.test(value)) return value;
+
+    // Host[:port] only (no path/query) for scheme-less inputs.
+    if (/[\/?#]/.test(value)) {
+      throw new Error('Invalid server value. Use a full URL (http(s)://...) when including a path/query.');
+    }
+
+    // Bracketed IPv6 (with optional port).
+    if (value.startsWith('[')) {
+      return `http://${value}`;
+    }
+
+    // Raw IPv6 without brackets.
+    if (isIP(value) === 6) {
+      return `http://[${value}]`;
+    }
+
+    // Domain/IP (IPv4) with optional port.
+    return `http://${value}`;
+  }
+
+  const configPathRaw = typeof options.config === 'string' ? options.config : './config.yaml';
+  const configPath = parseOrThrow<string>(nonEmptyStringSchema, configPathRaw, 'Invalid --config');
   const config = configExists(configPath) ? loadConfigFromFile(configPath) : undefined;
 
-  const baseUrlFromConfig = config
-    ? `http://${(config.server.host && config.server.host !== '0.0.0.0' ? config.server.host : '127.0.0.1')}:${config.server.port}`
-    : undefined;
+  const baseUrlFromPublicUrl = (() => {
+    const raw = typeof config?.server?.publicUrl === 'string' ? config.server.publicUrl.trim() : '';
+    if (!raw) return undefined;
+    return normalizeServerInputToBaseUrl(raw);
+  })();
 
-  const baseUrl =
+  const baseUrlFromConfig = (() => {
+    if (!config) return undefined;
+
+    const hostRaw = typeof config.server.host === 'string' ? config.server.host.trim() : '';
+
+    // Support a "public" URL being placed in server.host (common when behind a reverse proxy).
+    // If it's already a URL, trust it and don't append config.server.port.
+    if (hostRaw && /^https?:\/\//i.test(hostRaw)) {
+      return hostRaw;
+    }
+
+    const normalizedHost = normalizeServerHostForClient(hostRaw);
+
+    // If config.server.host includes a path/query, it must be a full URL.
+    if (/[\/?#]/.test(normalizedHost)) {
+      throw new Error('Invalid server.host in config.yaml. Use host[:port] or a full http(s):// URL.');
+    }
+
+    // Bracketed IPv6, with optional port.
+    const bracketed = /^\[(?<addr>[^\]]+)\](?::(?<port>\d{1,5}))?$/.exec(normalizedHost);
+    if (bracketed?.groups?.addr) {
+      if (bracketed.groups.port) {
+        return `http://${normalizedHost}`;
+      }
+      return `http://[${bracketed.groups.addr}]:${config.server.port}`;
+    }
+
+    // Raw IPv6 without brackets.
+    if (isIP(normalizedHost) === 6) {
+      return `http://[${normalizedHost}]:${config.server.port}`;
+    }
+
+    // If host already includes an explicit port (e.g. example.com:7233), don't append config.server.port.
+    const hostPortMatch = /^(?<h>[^:]+):(?<p>\d{1,5})$/.exec(normalizedHost);
+    if (hostPortMatch?.groups?.h && hostPortMatch.groups.p) {
+      const port = Number.parseInt(hostPortMatch.groups.p, 10);
+      if (Number.isFinite(port) && port >= 1 && port <= 65535) {
+        return `http://${hostPortMatch.groups.h}:${port}`;
+      }
+    }
+
+    return `http://${normalizedHost}:${config.server.port}`;
+  })();
+
+  const baseUrlCandidateRaw =
     (typeof options.server === 'string' ? options.server : undefined) ||
     process.env.AUTOKESTRA_SERVER_URL ||
+    baseUrlFromPublicUrl ||
     baseUrlFromConfig ||
     'http://127.0.0.1:7233';
 
+  const baseUrlCandidate = normalizeServerInputToBaseUrl(baseUrlCandidateRaw);
+
+  const baseUrl = parseOrThrow<string>(httpUrlSchema, baseUrlCandidate, 'Invalid server URL');
+
   const apiKeyFromConfig =
-    config?.server?.apiKeys && Array.isArray(config.server.apiKeys) && config.server.apiKeys.length > 0
-      ? String(config.server.apiKeys[0]).trim()
+    config?.server?.apiKeys && Array.isArray(config.server.apiKeys)
+      ? config.server.apiKeys.map((k: any) => String(k).trim()).find((k: string) => k.length > 0)
       : undefined;
 
-  const apiKey =
+  const apiKeyCandidate =
     (typeof options.apiKey === 'string' ? options.apiKey : undefined) ||
     process.env.AUTOKESTRA_API_KEY ||
     apiKeyFromConfig;
 
-  if (!apiKey) {
+  if (!apiKeyCandidate) {
     throw new Error('Missing API key. Provide --api-key, set AUTOKESTRA_API_KEY, or set server.apiKeys in config.yaml.');
   }
+
+  const apiKey = parseOrThrow<string>(pipe(string(), minLength(1)), String(apiKeyCandidate), 'Invalid API key');
 
   return { baseUrl, apiKey };
 }
@@ -319,7 +441,8 @@ program
             { json: options.json, enabled, idOverride: options.id },
           );
           process.exit(EXIT_SUCCESS);
-        } catch {
+        } catch (error) {
+          console.error('Error applying workflow:', error instanceof Error ? error.message : error);
           process.exit(EXIT_ERROR);
         }
       })
@@ -336,7 +459,8 @@ program
         try {
           const result = await deleteWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
           process.exit(result.deleted ? EXIT_SUCCESS : EXIT_NOT_FOUND);
-        } catch {
+        } catch (error) {
+          console.error('Error deleting workflow:', error instanceof Error ? error.message : error);
           process.exit(EXIT_ERROR);
         }
       })
@@ -365,7 +489,8 @@ program
             },
           );
           process.exit(EXIT_SUCCESS);
-        } catch {
+        } catch (error) {
+          console.error('Error listing workflows:', error instanceof Error ? error.message : error);
           process.exit(EXIT_ERROR);
         }
       })
@@ -382,7 +507,8 @@ program
         try {
           const result = await getWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
           process.exit(result.found ? EXIT_SUCCESS : EXIT_NOT_FOUND);
-        } catch {
+        } catch (error) {
+          console.error('Error getting workflow:', error instanceof Error ? error.message : error);
           process.exit(EXIT_ERROR);
         }
       })

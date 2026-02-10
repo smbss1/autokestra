@@ -3,9 +3,12 @@
 
 server:
   # HTTP server port
-  port: 7233
+  # port: 7233
   # Optional: server host (defaults to 0.0.0.0)
-  # host: "127.0.0.1"
+  # host is a bind address (e.g. 0.0.0.0, 127.0.0.1)
+  host: "0.0.0.0"
+  # publicUrl is the client-facing base URL (e.g. when behind a reverse proxy)
+  publicUrl: "https://app-7233-samuel-home-nas.eur5.ugdocker.link"
   # API keys for authenticating /api/v1/* requests (secure-by-default)
   # Clients can send either:
   # - Authorization: Bearer <apiKey>
