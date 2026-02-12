@@ -172,6 +172,44 @@ describe('CLI', () => {
     });
   });
 
+  it('should trigger a workflow manually', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const wfPath = join(dir, 'wf-trigger.yaml');
+
+      writeFileSync(
+        wfPath,
+        [
+          'apiVersion: v1',
+          'id: trigger-workflow',
+          'enabled: true',
+          'tasks:',
+          '  - id: t1',
+          '    type: example/plugin.action',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+
+      const apply = await runCli(['workflow', 'apply', wfPath], {
+        cwd: dir,
+        env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey },
+      });
+      expect(apply.code).toBe(0);
+
+      const trigger = await runCli(['workflow', 'trigger', 'trigger-workflow', '--json'], {
+        cwd: dir,
+        env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey },
+      });
+      expect(trigger.code).toBe(0);
+
+      const body = JSON.parse(trigger.stdout);
+      expect(body.workflowId).toBe('trigger-workflow');
+      expect(typeof body.executionId).toBe('string');
+      expect(body.executionId.length).toBeGreaterThan(0);
+      expect(body.status).toBe('ACCEPTED');
+    });
+  });
+
   // Note: This test is skipped because the migration output interferes with JSON parsing
   // Functional tests in execution.test.ts verify the CLI works correctly
   it.skip('should list executions in JSON format', async () => {

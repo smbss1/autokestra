@@ -29,12 +29,23 @@ export interface WorkflowDeleteOptions {
   json?: boolean;
 }
 
+export interface WorkflowTriggerOptions {
+  json?: boolean;
+  executionId?: string;
+}
+
 type WorkflowDto = {
   id: string;
   enabled: boolean;
   definition: any;
   createdAt: string;
   updatedAt: string;
+};
+
+type WorkflowTriggerResponseDto = {
+  workflowId: string;
+  executionId: string;
+  status: 'ACCEPTED';
 };
 
 function toHumanLine(wf: WorkflowDto): string {
@@ -167,6 +178,51 @@ export async function deleteWorkflow(
       }
       return { deleted: false };
     }
+    throw error;
+  }
+}
+
+export async function triggerWorkflow(
+  config: CliConfig,
+  id: string,
+  options: WorkflowTriggerOptions = {},
+): Promise<{ triggered: boolean; executionId?: string; reason?: 'not_found' | 'disabled' }> {
+  try {
+    const result = await requestJson<WorkflowTriggerResponseDto>(
+      config.api,
+      'POST',
+      `/api/v1/workflows/${encodeURIComponent(id)}/trigger`,
+      {
+        body: options.executionId ? { executionId: options.executionId } : {},
+      },
+    );
+
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log(`Triggered workflow '${id}' (execution: ${result.executionId})`);
+    }
+
+    return { triggered: true, executionId: result.executionId };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      if (options.json) {
+        console.log(JSON.stringify({ error: { code: 'NOT_FOUND', message: `Workflow '${id}' not found` } }, null, 2));
+      } else {
+        console.error(`Workflow '${id}' not found`);
+      }
+      return { triggered: false, reason: 'not_found' };
+    }
+
+    if (error instanceof ApiError && error.status === 409) {
+      if (options.json) {
+        console.log(JSON.stringify({ error: { code: 'WORKFLOW_DISABLED', message: `Workflow '${id}' is disabled` } }, null, 2));
+      } else {
+        console.error(`Workflow '${id}' is disabled`);
+      }
+      return { triggered: false, reason: 'disabled' };
+    }
+
     throw error;
   }
 }

@@ -40,6 +40,12 @@ Constraints:
   - Minimal secret(s) injected via SecretStore for tests.
   - SQLite uses temp DB per test run.
 
+- Manual trigger + live-debug flow is first-class for v0.1 operations:
+  - Server exposes a manual trigger endpoint that returns an `executionId` (`POST /api/v1/workflows/:id/trigger`).
+  - CLI exposes `workflow trigger <id>` and can chain directly into log tailing via `--follow`.
+  - Missing workflow and disabled workflow paths return deterministic non-success outcomes for scriptability.
+  - Alternative: forcing users to trigger indirectly (cron only) and then manually discover execution IDs. Rejected because it slows incident/debug loops and weakens CLI-first usability.
+
 ## Risks / Trade-offs
 
 - Risk: The umbrella DoD spec overlaps existing capability specs and can drift.

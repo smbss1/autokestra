@@ -29,6 +29,20 @@ The CLI MUST be suitable for automation.
 - **WHEN** a CLI command fails due to invalid input or missing config
 - **THEN** it exits with a non-zero code and prints a stable error message (human) or stable error object (JSON mode)
 
+### Requirement: CLI supports manual workflow trigger with execution handoff
+The CLI MUST allow operators to trigger a workflow manually and receive the execution reference to continue debugging/automation.
+
+#### Scenario: Trigger a workflow manually
+- **WHEN** a user runs a manual trigger command for an existing enabled workflow
+- **THEN** the command returns success and includes a stable `executionId` reference
+- **AND** the created execution is queryable via execution list/inspect/logs surfaces
+
+#### Scenario: Trigger command handles common operational errors deterministically
+- **WHEN** a user triggers a missing workflow
+- **THEN** the CLI exits with a deterministic not-found code and stable error output
+- **WHEN** a user triggers a disabled workflow
+- **THEN** the CLI exits with a deterministic conflict-style non-zero code and stable error output
+
 ### Requirement: CLI can be invoked as an installed command (no explicit bun invocation)
 The system MUST support invoking the CLI as an installed command so users can run server commands without calling Bun directly.
 
@@ -51,6 +65,11 @@ The system MUST allow users to inspect an execution and retrieve its logs.
 - **THEN** they receive execution state, timestamps, and task run state sufficient to diagnose failures
 - **WHEN** a user requests execution logs with pagination
 - **THEN** the system returns logs ordered newest-first and supports filtering by `taskId` and `level`
+
+#### Scenario: Follow execution logs after a manual trigger
+- **WHEN** a user triggers a workflow from the CLI with log-follow enabled
+- **THEN** the CLI streams execution logs continuously for the returned `executionId`
+- **AND** log filters (`level`, `since`, `taskId`) remain available while following
 
 ### Requirement: Plugin execution runs out-of-process and is permission-checked
 The system MUST execute plugin tasks out-of-process (as an OS process and/or a Docker container) and enforce deny-by-default permissions declared by the plugin.

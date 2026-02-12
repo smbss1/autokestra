@@ -13,6 +13,7 @@ export interface RunWorkflowOptions {
   db: Database;
   storedWorkflow: StoredWorkflow;
   executionId: string;
+  triggerType?: 'cron' | 'manual' | string;
   scheduledAt?: Date;
   pluginPaths: string[];
   silent?: boolean;
@@ -37,6 +38,7 @@ async function updateTaskRun(stateStore: StateStore, taskRun: TaskRun): Promise<
 export async function runStoredWorkflowOnce(options: RunWorkflowOptions): Promise<void> {
   const silent = options.silent ?? false;
   const wf = options.storedWorkflow;
+  const triggerType = options.triggerType ?? 'cron';
 
   const definition = wf.definition as any;
   const tasks = (definition?.tasks ?? []) as any[];
@@ -46,7 +48,7 @@ export async function runStoredWorkflowOnce(options: RunWorkflowOptions): Promis
 
   const execution = createInitialExecution(wf.id, options.executionId);
   execution.metadata = {
-    triggerType: 'cron',
+    triggerType,
     scheduledAt: options.scheduledAt?.toISOString(),
   };
 

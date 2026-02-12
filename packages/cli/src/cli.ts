@@ -6,7 +6,7 @@ import * as fs from 'node:fs/promises';
 import { isIP } from 'node:net';
 import * as path from 'node:path';
 import { listExecutions, inspectExecution, getExecutionLogs, cleanupExecutions } from './commands/execution';
-import { applyWorkflow, deleteWorkflow, getWorkflow, listWorkflows } from './commands/workflow';
+import { applyWorkflow, deleteWorkflow, getWorkflow, listWorkflows, triggerWorkflow } from './commands/workflow';
 import { setSecret, getSecret, listSecrets, deleteSecret } from './commands/secrets';
 import { startManagedServer } from '@autokestra/server';
 import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
@@ -509,6 +509,59 @@ program
           process.exit(result.found ? EXIT_SUCCESS : EXIT_NOT_FOUND);
         } catch (error) {
           console.error('Error getting workflow:', error instanceof Error ? error.message : error);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('trigger')
+      .description('trigger a workflow execution manually')
+      .argument('<id>', 'workflow id')
+      .option('--execution-id <id>', 'custom execution id (optional)')
+      .option('--follow', 'stream execution logs in real-time after trigger')
+      .option('--level <levels>', 'filter logs by level when using --follow (comma-separated)')
+      .option('--since <duration>', 'show logs from last N time window when using --follow (e.g., 5m, 2h)')
+      .option('--task <taskId>', 'filter logs by task ID when using --follow')
+      .option('--json', 'output in JSON format')
+      .option('--pretty', 'pretty print JSON output for followed logs (if applicable)')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .action(async (id, options) => {
+        try {
+          if (options.json && options.follow) {
+            throw new Error('--json cannot be used with --follow');
+          }
+
+          const api = resolveApiConfig(options);
+          const result = await triggerWorkflow(
+            { api },
+            id,
+            { json: options.json, executionId: options.executionId },
+          );
+
+          if (!result.triggered) {
+            process.exit(result.reason === 'not_found' ? EXIT_NOT_FOUND : EXIT_CONFLICT);
+          }
+
+          if (options.follow && result.executionId) {
+            await getExecutionLogs(
+              { api },
+              result.executionId,
+              {
+                level: options.level ? [options.level] : undefined,
+                since: options.since,
+                taskId: options.task,
+                follow: true,
+                json: false,
+                pretty: options.pretty,
+              },
+            );
+          }
+
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          console.error('Error triggering workflow:', error instanceof Error ? error.message : error);
           process.exit(EXIT_ERROR);
         }
       })

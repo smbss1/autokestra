@@ -2,6 +2,7 @@ import type { Server } from 'bun';
 
 import { Engine, runtime } from '@autokestra/engine';
 import type { Config } from '@autokestra/engine/src/config';
+import { runStoredWorkflowOnce } from '@autokestra/engine/src/runtime/workflowRunner';
 import { SecretResolver, SecretStore } from '@autokestra/secrets';
 
 import { createApp } from './app';
@@ -77,6 +78,7 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
   // The CLI must never access secrets locally.
   const secretStore = new SecretStore();
   const secretResolver = new SecretResolver(secretStore);
+  const pluginPaths = parsePluginPaths();
 
   const startedAt = Date.now();
   const app = createApp({
@@ -86,6 +88,28 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
     stateStore: engine.getStateStore(),
     db: engine.getDatabase(),
     secretStore,
+    triggerWorkflowExecution: async ({ workflowId, executionId }) => {
+      const storedWorkflow = await engine.getStateStore().getWorkflow(workflowId);
+      if (!storedWorkflow) {
+        throw new Error(`Workflow '${workflowId}' not found`);
+      }
+
+      void runStoredWorkflowOnce({
+        stateStore: engine.getStateStore(),
+        db: engine.getDatabase(),
+        storedWorkflow,
+        executionId,
+        triggerType: 'manual',
+        pluginPaths,
+        silent: options.silent ?? false,
+        secretResolver,
+      }).catch((error) => {
+        if (!options.silent) {
+          // eslint-disable-next-line no-console
+          console.error(`Manual workflow trigger failed for '${workflowId}' (${executionId}):`, error);
+        }
+      });
+    },
   });
 
   const port = config.server.port;
@@ -99,7 +123,6 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
 
   // Start the engine runtime (scheduling + execution). The server itself stays thin.
   const runtimeDisabled = process.env.AUTOKESTRA_DISABLE_RUNTIME === '1';
-  const pluginPaths = parsePluginPaths();
   const engineRuntime = runtimeDisabled
     ? undefined
     : runtime.startEngineRuntime({

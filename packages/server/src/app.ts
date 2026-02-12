@@ -21,6 +21,7 @@ export interface ServerContext {
   stateStore: StateStore;
   db: Database;
   secretStore: SecretStore;
+  triggerWorkflowExecution?: (input: { workflowId: string; executionId: string }) => Promise<void>;
 }
 
 function toWorkflowDto(workflow: StoredWorkflow) {
@@ -271,6 +272,47 @@ export function createApp(ctx: ServerContext) {
       return c.json(toWorkflowDto(stored!));
     },
   );
+
+  app.post('/api/v1/workflows/:id/trigger', async (c) => {
+    const workflowId = c.req.param('id');
+    const workflow = await ctx.stateStore.getWorkflow(workflowId);
+    if (!workflow) {
+      return c.json(apiError('NOT_FOUND', `Workflow '${workflowId}' not found`), 404);
+    }
+
+    if (!workflow.enabled) {
+      return c.json(apiError('WORKFLOW_DISABLED', `Workflow '${workflowId}' is disabled`), 409);
+    }
+
+    if (!ctx.triggerWorkflowExecution) {
+      return c.json(apiError('NOT_IMPLEMENTED', 'Workflow triggering is not available in this server mode'), 501);
+    }
+
+    let executionId = crypto.randomUUID();
+    try {
+      const contentType = c.req.header('content-type') || '';
+      if (contentType.toLowerCase().includes('application/json')) {
+        const body = await c.req.json();
+        const candidate = (body as any)?.executionId;
+        if (candidate !== undefined) {
+          if (typeof candidate !== 'string' || candidate.trim().length === 0) {
+            return c.json(apiError('VALIDATION_ERROR', 'executionId must be a non-empty string when provided'), 400);
+          }
+          executionId = candidate.trim();
+        }
+      }
+    } catch {
+      return c.json(apiError('BAD_REQUEST', 'Expected JSON body when Content-Type is application/json'), 400);
+    }
+
+    try {
+      await ctx.triggerWorkflowExecution({ workflowId, executionId });
+    } catch (error) {
+      return c.json(apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Failed to trigger workflow'), 500);
+    }
+
+    return c.json({ workflowId, executionId, status: 'ACCEPTED' }, 202);
+  });
 
   // Executions
   app.get('/api/v1/executions', async (c) => {

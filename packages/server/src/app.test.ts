@@ -330,6 +330,47 @@ describe('Server API v1', () => {
     expect((await mismatch.json()).error.code).toBe('WORKFLOW_ID_MISMATCH');
   });
 
+  it('workflow trigger returns accepted with execution id', async () => {
+    let triggered: { workflowId: string; executionId: string } | undefined;
+
+    const app = createApp({
+      version: 'test',
+      startedAt: Date.now() - 5,
+      apiKeys: ['k1'],
+      stateStore: store,
+      db,
+      triggerWorkflowExecution: async (input) => {
+        triggered = input;
+      },
+    });
+
+    const put = await app.fetch(
+      new Request('http://localhost/api/v1/workflows/wf-1', {
+        method: 'PUT',
+        headers: { ...authHeaders(), 'content-type': 'text/yaml' },
+        body: VALID_WORKFLOW_YAML,
+      }),
+    );
+    expect([200, 201]).toContain(put.status);
+
+    const trigger = await app.fetch(
+      new Request('http://localhost/api/v1/workflows/wf-1/trigger', {
+        method: 'POST',
+        headers: { ...authHeaders(), 'content-type': 'application/json' },
+        body: JSON.stringify({ executionId: 'exec-manual-1' }),
+      }),
+    );
+
+    expect(trigger.status).toBe(202);
+    const body = await trigger.json();
+    expect(body.workflowId).toBe('wf-1');
+    expect(body.executionId).toBe('exec-manual-1');
+    expect(body.status).toBe('ACCEPTED');
+
+    expect(triggered?.workflowId).toBe('wf-1');
+    expect(triggered?.executionId).toBe('exec-manual-1');
+  });
+
   it('executions list/inspect/logs work and logs are newest-first', async () => {
     const app = createApp({
       version: 'test',
