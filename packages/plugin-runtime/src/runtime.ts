@@ -1,5 +1,5 @@
 import { PluginManifest, ActionDef } from '@autokestra/plugin-sdk'
-import { LogCollector } from '@autokestra/engine/src/execution/logging';
+import { LogCollector, LogLevel } from '@autokestra/engine/src/execution/logging';
 import * as path from 'node:path'
 
 export interface PluginRuntime {
@@ -18,8 +18,24 @@ export interface LogContext {
   taskId: string;
 }
 
+const DEFAULT_PLUGIN_TIMEOUT_MS = 120000;
+
+function resolvePluginTimeout(timeoutMs?: number): number {
+  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    return timeoutMs;
+  }
+
+  const fromEnv = Number.parseInt(String(process.env.AUTOKESTRA_PLUGIN_TIMEOUT_MS || ''), 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) {
+    return fromEnv;
+  }
+
+  return DEFAULT_PLUGIN_TIMEOUT_MS;
+}
+
 export class ProcessRuntime implements PluginRuntime {
-  async execute(plugin: PluginInfo, input: unknown, timeoutMs = 30000, logContext?: LogContext): Promise<unknown> {
+  async execute(plugin: PluginInfo, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown> {
+    const effectiveTimeoutMs = resolvePluginTimeout(timeoutMs);
     const action = plugin.manifest.actions[0] // Assume first action for now
     const pluginDir = path.resolve(plugin.path)
     const entryPoint = path.join(pluginDir, 'index.ts') // Assume index.ts
@@ -39,8 +55,8 @@ export class ProcessRuntime implements PluginRuntime {
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         proc.kill()
-        reject(new Error('Plugin execution timed out'))
-      }, timeoutMs)
+        reject(new Error(`Plugin execution timed out after ${effectiveTimeoutMs}ms`))
+      }, effectiveTimeoutMs)
     })
 
     const executionPromise = Promise.all([
@@ -84,7 +100,7 @@ export class ProcessRuntime implements PluginRuntime {
         executionId: logContext.executionId,
         taskId: logContext.taskId,
         timestamp: Date.now(),
-        level: 'WARN',
+        level: LogLevel.WARN,
         source: `plugin:${logContext.executionId}/${logContext.taskId}`,
         message: 'Plugin log output exceeded 10MB; further output truncated',
         metadata: { truncated: true },
@@ -169,7 +185,7 @@ export class ProcessRuntime implements PluginRuntime {
       executionId: logContext.executionId,
       taskId: logContext.taskId,
       timestamp: Date.now(),
-      level: 'INFO',
+      level: LogLevel.INFO,
       source: `plugin:${logContext.executionId}/${logContext.taskId}`,
       message: processedLine,
       metadata: truncated ? { truncated: true } : undefined,
@@ -178,7 +194,8 @@ export class ProcessRuntime implements PluginRuntime {
 }
 
 export class DockerRuntime implements PluginRuntime {
-  async execute(plugin: PluginInfo, input: unknown, timeoutMs = 30000, logContext?: LogContext): Promise<unknown> {
+  async execute(plugin: PluginInfo, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown> {
+    const effectiveTimeoutMs = resolvePluginTimeout(timeoutMs);
     const action = plugin.manifest.actions[0] // Assume first action
     const imageName = `${plugin.name}:latest` // Assume built image
 
@@ -203,8 +220,8 @@ export class DockerRuntime implements PluginRuntime {
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         proc.kill()
-        reject(new Error('Docker execution timed out'))
-      }, timeoutMs)
+        reject(new Error(`Docker execution timed out after ${effectiveTimeoutMs}ms`))
+      }, effectiveTimeoutMs)
     })
 
     const executionPromise = Promise.all([
@@ -248,7 +265,7 @@ export class DockerRuntime implements PluginRuntime {
         executionId: logContext.executionId,
         taskId: logContext.taskId,
         timestamp: Date.now(),
-        level: 'WARN',
+        level: LogLevel.WARN,
         source: `plugin:${logContext.executionId}/${logContext.taskId}`,
         message: 'Plugin log output exceeded 10MB; further output truncated',
         metadata: { truncated: true },
@@ -308,7 +325,7 @@ export class DockerRuntime implements PluginRuntime {
           executionId: logContext.executionId,
           taskId: logContext.taskId,
           timestamp: logData.timestamp || Date.now(),
-          level: logData.level.toUpperCase(),
+          level: LogLevel[logData.level.toUpperCase() as keyof typeof LogLevel],
           source: `plugin:${logContext.executionId}/${logContext.taskId}`,
           message: logData.message,
           metadata: logData.metadata,
@@ -324,7 +341,7 @@ export class DockerRuntime implements PluginRuntime {
       executionId: logContext.executionId,
       taskId: logContext.taskId,
       timestamp: Date.now(),
-      level: 'INFO',
+      level: LogLevel.INFO,
       source: `plugin:${logContext.executionId}/${logContext.taskId}`,
       message: line,
     });
