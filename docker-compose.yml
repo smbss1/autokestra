@@ -25,4 +25,4 @@ services:
     volumes:
       - ./config.example.yaml:/config/config.yaml:ro
       - ./data:/data
-      - ./plugins:/plugins:ro
+      - ./plugins:/plugins

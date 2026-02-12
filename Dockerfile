@@ -25,6 +25,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+COPY --from=deps /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=build /app/autokestra-server /usr/local/bin/autokestra-server
 
 ENV AUTOKESTRA_CONFIG=/config/config.yaml
