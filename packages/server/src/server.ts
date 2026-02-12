@@ -61,6 +61,25 @@ async function runBunInstall(cwd: string): Promise<{ code: number; stderr: strin
   return { code, stderr };
 }
 
+async function hasWorkspaceDependencies(packageJsonPath: string): Promise<boolean> {
+  try {
+    const raw = await fs.readFile(packageJsonPath, 'utf8');
+    const pkg = JSON.parse(raw) as any;
+    const sections = [pkg?.dependencies, pkg?.devDependencies, pkg?.optionalDependencies, pkg?.peerDependencies];
+    for (const section of sections) {
+      if (!section || typeof section !== 'object') continue;
+      for (const value of Object.values(section)) {
+        if (typeof value === 'string' && value.startsWith('workspace:')) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export interface StartServerOptions {
   config: Config;
   silent?: boolean;
@@ -171,6 +190,11 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
       for (const pluginDir of selected) {
         const pkgJson = path.join(pluginDir, 'package.json');
         if (!(await pathExists(pkgJson))) {
+          skipped.push(path.basename(pluginDir));
+          continue;
+        }
+
+        if (await hasWorkspaceDependencies(pkgJson)) {
           skipped.push(path.basename(pluginDir));
           continue;
         }
