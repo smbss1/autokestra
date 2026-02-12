@@ -1,4 +1,6 @@
 import type { Server } from 'bun';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 import { Engine, runtime } from '@autokestra/engine';
 import type { Config } from '@autokestra/engine/src/config';
@@ -14,6 +16,49 @@ function parsePluginPaths(): string[] {
     .split(',')
     .map((p) => p.trim())
     .filter(Boolean);
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function listPluginDirs(pluginPaths: string[]): Promise<string[]> {
+  const dirs: string[] = [];
+
+  for (const base of pluginPaths) {
+    const absBase = path.resolve(base);
+    if (!(await pathExists(absBase))) continue;
+
+    const entries = await fs.readdir(absBase, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      dirs.push(path.join(absBase, entry.name));
+    }
+  }
+
+  return dirs;
+}
+
+async function runBunInstall(cwd: string): Promise<{ code: number; stderr: string }> {
+  const proc = Bun.spawn(['bun', 'install'], {
+    cwd,
+    stdin: 'ignore',
+    stdout: 'ignore',
+    stderr: 'pipe',
+    env: process.env,
+  });
+
+  const [stderr, code] = await Promise.all([
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  return { code, stderr };
 }
 
 export interface StartServerOptions {
@@ -109,6 +154,41 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
           console.error(`Manual workflow trigger failed for '${workflowId}' (${executionId}):`, error);
         }
       });
+    },
+    preparePluginDependencies: async ({ name }) => {
+      const allPluginDirs = await listPluginDirs(pluginPaths);
+      const selected = name
+        ? allPluginDirs.filter((dir) => path.basename(dir) === name)
+        : allPluginDirs;
+
+      if (selected.length === 0) {
+        return { prepared: [], skipped: [], found: false };
+      }
+
+      const prepared: string[] = [];
+      const skipped: string[] = [];
+
+      for (const pluginDir of selected) {
+        const pkgJson = path.join(pluginDir, 'package.json');
+        if (!(await pathExists(pkgJson))) {
+          skipped.push(path.basename(pluginDir));
+          continue;
+        }
+
+        const result = await runBunInstall(pluginDir);
+        if (result.code !== 0) {
+          const details = result.stderr.trim();
+          throw new Error(
+            details
+              ? `Failed to install dependencies for plugin '${path.basename(pluginDir)}': ${details}`
+              : `Failed to install dependencies for plugin '${path.basename(pluginDir)}'`,
+          );
+        }
+
+        prepared.push(path.basename(pluginDir));
+      }
+
+      return { prepared, skipped, found: true };
     },
   });
 

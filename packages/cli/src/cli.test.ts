@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import { spawn } from 'child_process';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import net from 'node:net';
@@ -54,6 +54,8 @@ async function withTestServer<T>(fn: (ctx: { dir: string; baseUrl: string; apiKe
   const baseUrl = `http://127.0.0.1:${port}`;
 
   const previousDisable = process.env.AUTOKESTRA_DISABLE_RUNTIME;
+  const previousPluginPaths = process.env.AUTOKESTRA_PLUGIN_PATHS;
+  process.env.AUTOKESTRA_PLUGIN_PATHS = join(dir, 'plugins');
   process.env.AUTOKESTRA_DISABLE_RUNTIME = '1';
 
   const managed = await startManagedServer({
@@ -71,6 +73,7 @@ async function withTestServer<T>(fn: (ctx: { dir: string; baseUrl: string; apiKe
   } finally {
     await managed.shutdown('test');
     process.env.AUTOKESTRA_DISABLE_RUNTIME = previousDisable;
+    process.env.AUTOKESTRA_PLUGIN_PATHS = previousPluginPaths;
   }
 }
 
@@ -225,6 +228,38 @@ describe('CLI', () => {
     expect(result.code).toBe(0);
     const parsed = JSON.parse(result.stdout);
     expect(parsed).toEqual({ plugins: [] });
+  });
+
+  it('should prepare plugin dependencies for one plugin', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const pluginDir = join(dir, 'plugins', 'sample-plugin');
+      const pkgPath = join(pluginDir, 'package.json');
+
+      mkdirSync(pluginDir, { recursive: true });
+      writeFileSync(pkgPath, JSON.stringify({ name: 'sample-plugin', version: '0.0.1' }, null, 2), 'utf8');
+
+      const result = await runCli(['plugin', 'prepare', 'sample-plugin', '--json'], {
+        cwd: dir,
+        env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey },
+      });
+
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed.prepared).toBe(1);
+      expect(parsed.plugins).toContain('sample-plugin');
+    });
+  });
+
+  it('should return not-found when preparing an unknown plugin', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const result = await runCli(['plugin', 'prepare', 'missing-plugin', '--json'], {
+        cwd: dir,
+        env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey },
+      });
+
+      expect(result.code).toBe(4);
+      expect(result.stderr).toContain("Plugin 'missing-plugin' not found");
+    });
   });
 
   it('should exit with error for unimplemented commands', async () => {

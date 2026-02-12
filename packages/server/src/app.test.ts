@@ -371,6 +371,36 @@ describe('Server API v1', () => {
     expect(triggered?.executionId).toBe('exec-manual-1');
   });
 
+  it('plugin prepare endpoint returns prepared plugin list', async () => {
+    let requestedName: string | undefined;
+
+    const app = createApp({
+      version: 'test',
+      startedAt: Date.now() - 5,
+      apiKeys: ['k1'],
+      stateStore: store,
+      db,
+      preparePluginDependencies: async ({ name }) => {
+        requestedName = name;
+        return { prepared: ['sample-plugin'], skipped: [], found: true };
+      },
+    });
+
+    const res = await app.fetch(
+      new Request('http://localhost/api/v1/plugins/prepare', {
+        method: 'POST',
+        headers: { ...authHeaders(), 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'sample-plugin' }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.prepared).toBe(1);
+    expect(body.plugins).toEqual(['sample-plugin']);
+    expect(requestedName).toBe('sample-plugin');
+  });
+
   it('executions list/inspect/logs work and logs are newest-first', async () => {
     const app = createApp({
       version: 'test',

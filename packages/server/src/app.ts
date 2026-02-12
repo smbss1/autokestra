@@ -22,6 +22,7 @@ export interface ServerContext {
   db: Database;
   secretStore: SecretStore;
   triggerWorkflowExecution?: (input: { workflowId: string; executionId: string }) => Promise<void>;
+  preparePluginDependencies?: (input: { name?: string }) => Promise<{ prepared: string[]; skipped: string[]; found: boolean }>;
 }
 
 function toWorkflowDto(workflow: StoredWorkflow) {
@@ -312,6 +313,39 @@ export function createApp(ctx: ServerContext) {
     }
 
     return c.json({ workflowId, executionId, status: 'ACCEPTED' }, 202);
+  });
+
+  app.post('/api/v1/plugins/prepare', async (c) => {
+    if (!ctx.preparePluginDependencies) {
+      return c.json(apiError('NOT_IMPLEMENTED', 'Plugin preparation is not available in this server mode'), 501);
+    }
+
+    let body: any = {};
+    try {
+      const contentType = (c.req.header('content-type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        body = await c.req.json();
+      }
+    } catch {
+      return c.json(apiError('BAD_REQUEST', 'Expected JSON body when Content-Type is application/json'), 400);
+    }
+
+    const nameRaw = body?.name;
+    if (nameRaw !== undefined && (typeof nameRaw !== 'string' || nameRaw.trim().length === 0)) {
+      return c.json(apiError('VALIDATION_ERROR', 'name must be a non-empty string when provided'), 400);
+    }
+
+    const name = typeof nameRaw === 'string' ? nameRaw.trim() : undefined;
+
+    try {
+      const result = await ctx.preparePluginDependencies({ name });
+      if (!result.found) {
+        return c.json(apiError('NOT_FOUND', name ? `Plugin '${name}' not found` : 'No plugins found'), 404);
+      }
+      return c.json({ prepared: result.prepared.length, plugins: result.prepared, skipped: result.skipped });
+    } catch (error) {
+      return c.json(apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Failed to prepare plugins'), 500);
+    }
   });
 
   // Executions

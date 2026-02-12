@@ -12,6 +12,7 @@ import { startManagedServer } from '@autokestra/server';
 import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
 import { safeParse, pipe, string, minLength, check } from 'valibot';
 import type { ApiClientConfig } from './apiClient';
+import { requestJson } from './apiClient';
 
 const VERSION = "0.0.1";
 const DEFAULT_PID_FILE = path.join(process.cwd(), '.autokestra', 'server.pid');
@@ -570,6 +571,50 @@ program
 program
   .command('plugin')
   .description('manage plugins')
+  .addCommand(
+    new Command('prepare')
+      .description('prepare plugin dependencies on the server for one plugin or all plugins')
+      .argument('[name]', 'plugin name (prepares all plugins if omitted)')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .option('--json', 'output in JSON format')
+      .action(async (name, options) => {
+        try {
+          const api = resolveApiConfig(options);
+          const result = await requestJson<{ prepared: number; plugins: string[]; skipped: string[] }>(
+            api,
+            'POST',
+            '/api/v1/plugins/prepare',
+            { body: typeof name === 'string' && name.trim().length > 0 ? { name: name.trim() } : {} },
+          );
+
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            if (result.prepared === 0) {
+              console.log('No plugin dependencies to install');
+            } else {
+              console.log(`Prepared plugin dependencies on server: ${result.plugins.join(', ')}`);
+            }
+            if (Array.isArray(result.skipped) && result.skipped.length > 0) {
+              console.log(`Skipped (no package.json): ${result.skipped.join(', ')}`);
+            }
+          }
+
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          const status = (error as any)?.status;
+          const message = error instanceof Error ? error.message : String(error);
+          if (status === 404) {
+            console.error(typeof name === 'string' && name.trim().length > 0 ? `Plugin '${name}' not found` : 'No plugins found');
+            process.exit(EXIT_NOT_FOUND);
+          }
+          console.error('Error preparing plugins:', message);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
   .addCommand(
     new Command('build')
       .description('build a plugin Docker image')
