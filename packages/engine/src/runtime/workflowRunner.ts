@@ -78,7 +78,7 @@ export async function runStoredWorkflowOnce(options: RunWorkflowOptions): Promis
 
   const declaredSecrets = Array.isArray((definition as any)?.secrets)
     ? (definition as any).secrets.map((s: any) => String(s).trim()).filter(Boolean)
-    : [];
+    : undefined;
 
   try {
     for (const taskId of order) {
@@ -109,7 +109,7 @@ export async function runStoredWorkflowOnce(options: RunWorkflowOptions): Promis
             taskId: task.id,
             type: task.type,
             inputs: task.inputs ?? {},
-            allowedSecrets: declaredSecrets,
+            ...(declaredSecrets ? { allowedSecrets: declaredSecrets } : {}),
           },
         },
         new AbortController().signal,
