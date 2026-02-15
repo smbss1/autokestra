@@ -39,3 +39,21 @@ Output:
 Notes / trade-offs:
 - The binary is OS/arch-specific (build on Linux for Linux, etc.).
 - It increases build time and artifact size, but removes the need to have Bun installed on target machines.
+
+## Plugin Authoring Commands
+
+The CLI provides local plugin DX commands:
+
+- `workflow plugin init <name> [--namespace <ns>] [--dir <path>] [--json]`
+- `workflow plugin validate <pluginPath> [--action <name>] [--input <json-file>] [--json]`
+- `workflow plugin dev <pluginPath> --action <name> [--input <json-file>] [--watch] [--json]`
+
+Examples:
+
+- `workflow plugin init hello-plugin --namespace core --dir ./plugins`
+- `workflow plugin validate ./plugins/hello-plugin --action run --input /tmp/input.json --json`
+- `workflow plugin dev ./plugins/hello-plugin --action run --input /tmp/input.json --watch`
+
+For full end-to-end onboarding and troubleshooting, see:
+
+- `docs/plugin-first-plugin.md`

@@ -262,6 +262,68 @@ describe('CLI', () => {
     });
   });
 
+  it('should scaffold a plugin with plugin init', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-cli-plugin-init-'));
+    const result = await runCli(['plugin', 'init', 'dx-plugin', '--dir', './plugins', '--json'], { cwd: dir });
+
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.plugin.name).toBe('dx-plugin');
+    expect(parsed.files).toEqual(expect.arrayContaining(['plugin.yaml', 'index.ts', 'package.json']));
+  });
+
+  it('should validate a scaffolded plugin', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-cli-plugin-validate-'));
+    const init = await runCli(['plugin', 'init', 'dx-plugin', '--dir', './plugins'], { cwd: dir });
+    expect(init.code).toBe(0);
+
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, JSON.stringify({ message: 'hi' }, null, 2), 'utf8');
+
+    const pluginPath = join(dir, 'plugins', 'dx-plugin');
+    const validate = await runCli(['plugin', 'validate', pluginPath, '--action', 'run', '--input', inputPath, '--json'], {
+      cwd: dir,
+    });
+
+    expect(validate.code).toBe(0);
+    const parsed = JSON.parse(validate.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.action).toBe('run');
+  });
+
+  it('should run plugin dev once with runtime envelope', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-cli-plugin-dev-'));
+    const init = await runCli(['plugin', 'init', 'dx-plugin', '--dir', './plugins'], { cwd: dir });
+    expect(init.code).toBe(0);
+
+    const inputPath = join(dir, 'input.json');
+    writeFileSync(inputPath, JSON.stringify({ message: 'from-dev' }, null, 2), 'utf8');
+
+    const pluginPath = join(dir, 'plugins', 'dx-plugin');
+    const dev = await runCli(['plugin', 'dev', pluginPath, '--action', 'run', '--input', inputPath, '--json'], {
+      cwd: dir,
+    });
+
+    expect(dev.code).toBe(0);
+    const parsed = JSON.parse(dev.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.action).toBe('run');
+    expect(parsed.output.ok).toBe(true);
+  });
+
+  it('should fail plugin validate for invalid manifest', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-cli-plugin-invalid-manifest-'));
+    const pluginDir = join(dir, 'broken-plugin');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(join(pluginDir, 'plugin.yaml'), 'name: bad plugin\nversion: not-semver\nnamespace: core\nactions: []\n', 'utf8');
+    writeFileSync(join(pluginDir, 'index.ts'), 'process.stdout.write("{}")\n', 'utf8');
+
+    const result = await runCli(['plugin', 'validate', pluginDir, '--json'], { cwd: dir });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('Invalid manifest');
+  });
+
   it('should exit with error for unimplemented commands', async () => {
     const result = await runCli(['server', 'start', '--config', './definitely-does-not-exist.yaml']);
     expect(result.code).toBe(1);

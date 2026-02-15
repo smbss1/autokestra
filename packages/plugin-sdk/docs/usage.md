@@ -1,18 +1,37 @@
 # Plugin SDK Usage
 
+Canonical onboarding guide:
+
+- `docs/plugin-first-plugin.md`
+
 ## Creating a Plugin
 
 ```typescript
-import { defineAction } from '@autokestra/plugin-sdk'
+import { defineAction, definePlugin, runPluginProcess } from '@autokestra/plugin-sdk'
 
-export default defineAction({
-  async execute(input: { url: string }, context) {
-    context.log.info(`Fetching ${input.url}`)
-    // Secrets are passed via inputs, not environment
-    const response = await fetch(input.url)
-    return { data: await response.text() }
-  }
+const plugin = definePlugin({
+  metadata: {
+    name: 'http-client',
+    version: '0.1.0',
+    namespace: 'core',
+  },
+  actions: {
+    run: defineAction({
+      async execute(input: { url: string }, context) {
+        context.log.info(`Fetching ${input.url}`)
+        const response = await fetch(input.url)
+        return { data: await response.text() }
+      },
+    }),
+  },
 })
+
+if (import.meta.main) {
+  runPluginProcess(plugin).catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exit(1)
+  })
+}
 ```
 
 ## Recommended Patterns

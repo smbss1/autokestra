@@ -3,7 +3,7 @@ import { LogCollector, LogLevel } from '@autokestra/engine/src/execution/logging
 import * as path from 'node:path'
 
 export interface PluginRuntime {
-  execute(plugin: PluginInfo, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown>
+  execute(plugin: PluginInfo, actionName: string, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown>
 }
 
 export interface PluginInfo {
@@ -34,9 +34,14 @@ function resolvePluginTimeout(timeoutMs?: number): number {
 }
 
 export class ProcessRuntime implements PluginRuntime {
-  async execute(plugin: PluginInfo, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown> {
+  async execute(plugin: PluginInfo, actionName: string, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown> {
     const effectiveTimeoutMs = resolvePluginTimeout(timeoutMs);
-    const action = plugin.manifest.actions[0] // Assume first action for now
+    const action = plugin.manifest.actions.find((candidate) => candidate.name === actionName)
+    if (!action) {
+      throw new Error(
+        `Action '${actionName}' not found in plugin '${plugin.manifest.namespace}/${plugin.name}'`
+      )
+    }
     const pluginDir = path.resolve(plugin.path)
     const entryPoint = path.join(pluginDir, 'index.ts') // Assume index.ts
 
@@ -65,12 +70,16 @@ export class ProcessRuntime implements PluginRuntime {
       proc.exited
     ]).then(async ([output, _, exitCode]) => {
       if (exitCode !== 0) {
-        throw new Error(`Plugin execution failed`)
+        throw new Error(
+          `Plugin execution failed for ${plugin.manifest.namespace}/${plugin.name}.${actionName} (exit code ${exitCode})`
+        )
       }
       try {
         return JSON.parse(output.trim())
       } catch (err) {
-        throw new Error(`Invalid plugin output: ${output}`)
+        throw new Error(
+          `Invalid plugin output for ${plugin.manifest.namespace}/${plugin.name}.${actionName}: expected JSON on stdout`
+        )
       }
     })
 
@@ -194,9 +203,14 @@ export class ProcessRuntime implements PluginRuntime {
 }
 
 export class DockerRuntime implements PluginRuntime {
-  async execute(plugin: PluginInfo, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown> {
+  async execute(plugin: PluginInfo, actionName: string, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown> {
     const effectiveTimeoutMs = resolvePluginTimeout(timeoutMs);
-    const action = plugin.manifest.actions[0] // Assume first action
+    const action = plugin.manifest.actions.find((candidate) => candidate.name === actionName)
+    if (!action) {
+      throw new Error(
+        `Action '${actionName}' not found in plugin '${plugin.manifest.namespace}/${plugin.name}'`
+      )
+    }
     const imageName = `${plugin.name}:latest` // Assume built image
 
     const dockerArgs = [
@@ -230,12 +244,16 @@ export class DockerRuntime implements PluginRuntime {
       proc.exited
     ]).then(async ([output, _, exitCode]) => {
       if (exitCode !== 0) {
-        throw new Error(`Docker execution failed`)
+        throw new Error(
+          `Docker execution failed for ${plugin.manifest.namespace}/${plugin.name}.${actionName} (exit code ${exitCode})`
+        )
       }
       try {
         return JSON.parse(output.trim())
       } catch (err) {
-        throw new Error(`Invalid plugin output: ${output}`)
+        throw new Error(
+          `Invalid plugin output for ${plugin.manifest.namespace}/${plugin.name}.${actionName}: expected JSON on stdout`
+        )
       }
     })
 

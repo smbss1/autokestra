@@ -56,6 +56,7 @@ main().catch((err) => {
             ],
           } as any,
         },
+        'echo',
         { hello: 'world' },
         10_000,
         {
@@ -70,6 +71,83 @@ main().catch((err) => {
       expect(result).toEqual({ ok: true, echo: { hello: 'world' } })
       expect(captured.length).toBeGreaterThan(0)
       expect(captured.some((e) => String(e.message).includes('plugin started'))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('fails with actionable error when stdout is not valid JSON', async () => {
+    const runtime = new ProcessRuntime()
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-plugin-'))
+
+    try {
+      const pluginEntry = join(dir, 'index.ts')
+      writeFileSync(
+        pluginEntry,
+        `process.stdout.write('not-json')`
+      )
+
+      await expect(
+        runtime.execute(
+          {
+            name: 'test-plugin',
+            path: dir,
+            manifest: {
+              name: 'test-plugin',
+              version: '0.0.0',
+              namespace: 'test',
+              actions: [
+                {
+                  name: 'echo',
+                  description: 'echo',
+                  input: {},
+                  output: {},
+                },
+              ],
+            } as any,
+          },
+          'echo',
+          { hello: 'world' },
+          10_000,
+        )
+      ).rejects.toThrow('Invalid plugin output for test/test-plugin.echo')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('fails when requested action does not exist in manifest', async () => {
+    const runtime = new ProcessRuntime()
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-plugin-'))
+
+    try {
+      const pluginEntry = join(dir, 'index.ts')
+      writeFileSync(pluginEntry, `process.stdout.write('{}')`)
+
+      await expect(
+        runtime.execute(
+          {
+            name: 'test-plugin',
+            path: dir,
+            manifest: {
+              name: 'test-plugin',
+              version: '0.0.0',
+              namespace: 'test',
+              actions: [
+                {
+                  name: 'echo',
+                  description: 'echo',
+                  input: {},
+                  output: {},
+                },
+              ],
+            } as any,
+          },
+          'missing',
+          { hello: 'world' },
+          10_000,
+        )
+      ).rejects.toThrow("Action 'missing' not found in plugin 'test/test-plugin'")
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

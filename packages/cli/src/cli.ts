@@ -13,6 +13,7 @@ import { loadConfigFromFile } from '@autokestra/engine/src/configLoader';
 import { safeParse, pipe, string, minLength, check } from 'valibot';
 import type { ApiClientConfig } from './apiClient';
 import { requestJson } from './apiClient';
+import { PLUGIN_TEMPLATE_VERSION, renderIndexTs, renderPackageJson, renderPluginYaml } from './pluginTemplates';
 
 const VERSION = "0.0.1";
 const DEFAULT_PID_FILE = path.join(process.cwd(), '.autokestra', 'server.pid');
@@ -27,6 +28,77 @@ const EXIT_NOT_FOUND = 4;
 const EXIT_CONFLICT = 5;
 
 const program = new Command();
+
+type PluginExecutionResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+};
+
+async function loadPluginManifest(pluginPath: string) {
+  const module = await import('../../plugin-runtime/src/manifest');
+  return module.loadManifest(pluginPath);
+}
+
+function resolvePluginPath(inputPath: string): string {
+  return path.resolve(process.cwd(), inputPath);
+}
+
+async function readJsonInputFile(inputFile?: string): Promise<unknown> {
+  if (!inputFile) return {};
+  const raw = await fs.readFile(path.resolve(process.cwd(), inputFile), 'utf8');
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new Error(`Invalid JSON input file: ${inputFile}`);
+  }
+}
+
+async function executePluginProcess(pluginPath: string, action: string, input: unknown): Promise<PluginExecutionResult> {
+  const entryPoint = path.join(pluginPath, 'index.ts');
+  if (!fsSync.existsSync(entryPoint)) {
+    throw new Error(`Plugin entrypoint not found: ${entryPoint}`);
+  }
+
+  return await new Promise<PluginExecutionResult>((resolve, reject) => {
+    const child = spawn('bun', ['run', entryPoint], {
+      cwd: pluginPath,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env },
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+
+    child.on('close', (code) => {
+      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    });
+
+    child.stdin.write(JSON.stringify({ action, input }));
+    child.stdin.end();
+  });
+}
+
+function printPluginError(error: unknown, json = false): void {
+  const message = error instanceof Error ? error.message : String(error);
+  if (json) {
+    console.error(JSON.stringify({ ok: false, error: { message } }, null, 2));
+  } else {
+    console.error(message);
+  }
+}
 
 function configExists(filePath: string): boolean {
   try {
@@ -571,6 +643,204 @@ program
 program
   .command('plugin')
   .description('manage plugins')
+  .addCommand(
+    new Command('init')
+      .description('scaffold a new plugin project')
+      .argument('<name>', 'plugin name (kebab-case)')
+      .option('--namespace <namespace>', 'plugin namespace', 'core')
+      .option('--dir <dir>', 'base directory where plugin folder is created', './plugins')
+      .option('--force', 'overwrite existing files in target plugin directory')
+      .option('--json', 'output in JSON format')
+      .action(async (name, options) => {
+        try {
+          const pluginName = String(name || '').trim();
+          if (!/^[a-z0-9-]+$/.test(pluginName)) {
+            throw new Error('Plugin name must be kebab-case (e.g. my-plugin)');
+          }
+
+          const namespace = String(options.namespace || '').trim() || 'core';
+          const baseDir = path.resolve(process.cwd(), options.dir || './plugins');
+          const pluginDir = path.join(baseDir, pluginName);
+
+          if (fsSync.existsSync(pluginDir) && !options.force) {
+            console.error(`Plugin directory already exists: ${pluginDir}`);
+            process.exit(EXIT_CONFLICT);
+          }
+
+          await fs.mkdir(pluginDir, { recursive: true });
+
+          const outputs = [
+            { name: 'plugin.yaml', content: renderPluginYaml(pluginName, namespace) },
+            { name: 'index.ts', content: renderIndexTs(pluginName, namespace) },
+            { name: 'package.json', content: renderPackageJson(pluginName) },
+          ];
+
+          for (const output of outputs) {
+            await fs.writeFile(path.join(pluginDir, output.name), output.content, 'utf8');
+          }
+
+          const result = {
+            ok: true,
+            templateVersion: PLUGIN_TEMPLATE_VERSION,
+            plugin: {
+              name: pluginName,
+              namespace,
+              path: pluginDir,
+            },
+            files: outputs.map((output) => output.name),
+          };
+
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            console.log(`Created plugin scaffold at ${pluginDir}`);
+            console.log(`Template version: ${PLUGIN_TEMPLATE_VERSION}`);
+            console.log(`Files: ${result.files.join(', ')}`);
+          }
+
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          printPluginError(error, options.json);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('validate')
+      .description('validate plugin manifest and action process contract')
+      .argument('<pluginPath>', 'path to plugin directory')
+      .option('--action <name>', 'action to validate (defaults to first manifest action)')
+      .option('--input <file>', 'path to JSON input fixture for action execution')
+      .option('--json', 'output in JSON format')
+      .action(async (pluginPathArg, options) => {
+        try {
+          const pluginPath = resolvePluginPath(pluginPathArg);
+          const manifest = await loadPluginManifest(pluginPath);
+          const actionName =
+            typeof options.action === 'string' && options.action.trim().length > 0
+              ? options.action.trim()
+              : manifest.actions[0]?.name;
+
+          if (!actionName) {
+            throw new Error('No action available for validation');
+          }
+
+          const input = await readJsonInputFile(options.input);
+          const execution = await executePluginProcess(pluginPath, actionName, input);
+
+          if (execution.exitCode !== 0) {
+            const reason = execution.stderr.trim() || `Plugin exited with code ${execution.exitCode}`;
+            throw new Error(`Action execution failed for ${manifest.namespace}/${manifest.name}.${actionName}: ${reason}`);
+          }
+
+          let parsedOutput: unknown;
+          try {
+            parsedOutput = execution.stdout.trim().length ? JSON.parse(execution.stdout) : null;
+          } catch {
+            throw new Error(
+              `Invalid plugin output for ${manifest.namespace}/${manifest.name}.${actionName}: expected JSON on stdout`
+            );
+          }
+
+          const result = {
+            ok: true,
+            plugin: `${manifest.namespace}/${manifest.name}`,
+            action: actionName,
+            output: parsedOutput,
+          };
+
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            console.log(`Validation succeeded for ${result.plugin}.${result.action}`);
+          }
+
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          printPluginError(error, options.json);
+          process.exit(EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
+    new Command('dev')
+      .description('run a plugin action locally with runtime-compatible payload envelope')
+      .argument('<pluginPath>', 'path to plugin directory')
+      .requiredOption('--action <name>', 'action name to execute')
+      .option('--input <file>', 'path to JSON input fixture')
+      .option('--watch', 're-run when plugin sources or input fixture change')
+      .option('--json', 'output in JSON format')
+      .action(async (pluginPathArg, options) => {
+        const pluginPath = resolvePluginPath(pluginPathArg);
+        const actionName = String(options.action || '').trim();
+        let runCount = 0;
+        let lastExitCode = EXIT_SUCCESS;
+        const watchers: fsSync.FSWatcher[] = [];
+
+        const runOnce = async () => {
+          runCount += 1;
+          console.error(`--- plugin dev run #${runCount} ---`);
+
+          try {
+            const input = await readJsonInputFile(options.input);
+            const execution = await executePluginProcess(pluginPath, actionName, input);
+
+            if (execution.stderr.trim()) {
+              console.error(execution.stderr.trim());
+            }
+
+            if (execution.exitCode !== 0) {
+              lastExitCode = EXIT_ERROR;
+              console.error(`Action '${actionName}' failed with exit code ${execution.exitCode}`);
+              return;
+            }
+
+            let parsedOutput: unknown;
+            try {
+              parsedOutput = execution.stdout.trim().length ? JSON.parse(execution.stdout) : null;
+            } catch {
+              lastExitCode = EXIT_ERROR;
+              console.error(`Invalid plugin output for action '${actionName}': expected JSON on stdout`);
+              return;
+            }
+
+            lastExitCode = EXIT_SUCCESS;
+            if (options.json) {
+              console.log(JSON.stringify({ ok: true, action: actionName, output: parsedOutput }, null, 2));
+            } else {
+              console.log(JSON.stringify(parsedOutput));
+            }
+          } catch (error) {
+            lastExitCode = EXIT_ERROR;
+            printPluginError(error, options.json);
+          }
+        };
+
+        await runOnce();
+        if (!options.watch) {
+          process.exit(lastExitCode);
+          return;
+        }
+
+        const scheduleRerun = () => {
+          void runOnce();
+        };
+
+        try {
+          watchers.push(fsSync.watch(pluginPath, { recursive: true }, scheduleRerun));
+        } catch {
+          watchers.push(fsSync.watch(pluginPath, scheduleRerun));
+        }
+        if (options.input) {
+          watchers.push(fsSync.watch(path.resolve(process.cwd(), options.input), scheduleRerun));
+        }
+
+        process.on('SIGINT', () => {
+          for (const watcher of watchers) watcher.close();
+          process.exit(lastExitCode);
+        });
+      })
+  )
   .addCommand(
     new Command('prepare')
       .description('prepare plugin dependencies on the server for one plugin or all plugins')

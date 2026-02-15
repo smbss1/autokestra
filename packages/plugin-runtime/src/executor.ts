@@ -37,7 +37,7 @@ export class PluginExecutor {
 
     const startTime = Date.now()
     try {
-      const result = await this.runtime.execute(plugin, resolvedInputs, timeoutMs, logContext)
+      const result = await this.runtime.execute(plugin, invocation.action.name, resolvedInputs, timeoutMs, logContext)
       const duration = Date.now() - startTime
       return {
         result,
