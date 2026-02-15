@@ -11,6 +11,7 @@
   "dependencies": {
     "@autokestra/engine": "workspace:*",
     "@autokestra/secrets": "workspace:*",
+    "@autokestra/plugin-sdk": "workspace:*",
     "hono": "^4.0.0"
   },
   "devDependencies": {
