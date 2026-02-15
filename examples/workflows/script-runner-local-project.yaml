@@ -1,0 +1,24 @@
+id: script_runner_local_project
+enabled: true
+apiVersion: v1
+
+trigger:
+  type: cron
+  cron: "0 6 * * *"
+
+tasks:
+  - id: run_local_project
+    type: core/script.run
+    inputs:
+      source:
+        type: local
+        path: "/opt/apps/my-service"
+      projectMode: true
+      runtime: auto
+      install:
+        enabled: false
+      lifecycle:
+        runPrestart: true
+        runStart: true
+        runPoststart: true
+      timeoutMs: 300000

@@ -114,6 +114,13 @@
         "typescript": "^5.9.3",
       },
     },
+    "plugins/script": {
+      "name": "@autokestra/plugin-script",
+      "version": "0.0.1",
+      "dependencies": {
+        "@autokestra/plugin-sdk": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@autokestra/cli": ["@autokestra/cli@workspace:packages/cli"],
@@ -125,6 +132,8 @@
     "@autokestra/plugin-http": ["@autokestra/plugin-http@workspace:plugins/http"],
 
     "@autokestra/plugin-runtime": ["@autokestra/plugin-runtime@workspace:packages/plugin-runtime"],
+
+    "@autokestra/plugin-script": ["@autokestra/plugin-script@workspace:plugins/script"],
 
     "@autokestra/plugin-sdk": ["@autokestra/plugin-sdk@workspace:packages/plugin-sdk"],
 

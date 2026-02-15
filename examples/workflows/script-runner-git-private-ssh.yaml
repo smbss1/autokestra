@@ -1,0 +1,30 @@
+id: script_runner_git_private_ssh
+enabled: true
+apiVersion: v1
+
+trigger:
+  type: cron
+  cron: "45 * * * *"
+
+tasks:
+  - id: run_private_repo_ssh
+    type: core/script.run
+    inputs:
+      source:
+        type: git
+        repoUrl: "git@github.com:acme/private-repo.git"
+        ref: "main"
+        auth:
+          method: ssh
+          privateKey: "{{ secrets.GIT_SSH_PRIVATE_KEY }}"
+          knownHosts: "{{ secrets.GIT_KNOWN_HOSTS }}"
+      projectMode: true
+      runtime: tsx
+      install:
+        enabled: true
+        tool: pnpm
+      lifecycle:
+        runPrestart: true
+        runStart: true
+        runPoststart: true
+      timeoutMs: 300000

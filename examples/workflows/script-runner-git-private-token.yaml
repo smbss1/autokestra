@@ -1,0 +1,29 @@
+id: script_runner_git_private_token
+enabled: true
+apiVersion: v1
+
+trigger:
+  type: cron
+  cron: "15 * * * *"
+
+tasks:
+  - id: run_private_repo_token
+    type: core/script.run
+    inputs:
+      source:
+        type: git
+        repoUrl: "https://github.com/acme/private-repo.git"
+        ref: "main"
+        auth:
+          method: token
+          token: "{{ secrets.GITHUB_TOKEN }}"
+      projectMode: true
+      runtime: bun
+      install:
+        enabled: true
+        tool: npm
+      lifecycle:
+        runPrestart: true
+        runStart: true
+        runPoststart: true
+      timeoutMs: 300000

@@ -1,0 +1,200 @@
+namespace: core
+name: script
+version: 0.1.0
+description: "Run JS/TS scripts and full package.json projects from local, git, or inline sources"
+actions:
+  - name: run
+    description: "Run a JavaScript/TypeScript script or project"
+    input:
+      type: object
+      properties:
+        source:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [local, git, inline]
+            path:
+              type: string
+            repoUrl:
+              type: string
+            ref:
+              type: string
+            subdir:
+              type: string
+            auth:
+              type: object
+              properties:
+                method:
+                  type: string
+                  enum: [token, ssh]
+                token:
+                  type: string
+                username:
+                  type: string
+                privateKey:
+                  type: string
+                knownHosts:
+                  type: string
+              required: [method]
+            language:
+              type: string
+              enum: [js, ts]
+            content:
+              type: string
+          required: [type]
+        projectMode:
+          type: boolean
+        runtime:
+          type: string
+          enum: [auto, bun, tsx]
+        install:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            tool:
+              type: string
+              enum: [npm, pnpm, yarn, bun]
+            packages:
+              type: array
+              items:
+                type: string
+            command:
+              type: string
+          required: [enabled]
+        lifecycle:
+          type: object
+          properties:
+            runPrestart:
+              type: boolean
+            runStart:
+              type: boolean
+            runPoststart:
+              type: boolean
+        entry:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        workingDir:
+          type: string
+        timeoutMs:
+          type: number
+      required: [source]
+    output:
+      type: object
+      properties:
+        success:
+          type: boolean
+        mode:
+          type: string
+          enum: [project, entry, inline]
+        source:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [local, git, inline]
+            workspacePath:
+              type: string
+            repoUrl:
+              type: string
+            ref:
+              type: string
+            commit:
+              type: string
+            subdir:
+              type: string
+          required: [type, workspacePath]
+        runtime:
+          type: object
+          properties:
+            selected:
+              type: string
+              enum: [bun, tsx]
+            installTool:
+              type: string
+              enum: [npm, pnpm, yarn, bun, none]
+            projectMode:
+              type: boolean
+          required: [selected, installTool, projectMode]
+        lifecycle:
+          type: object
+          properties:
+            phases:
+              type: array
+              items:
+                type: object
+            executed:
+              type: array
+              items:
+                type: string
+            skipped:
+              type: array
+              items:
+                type: string
+          required: [phases, executed, skipped]
+        command:
+          type: object
+          properties:
+            value:
+              type: string
+            args:
+              type: array
+              items:
+                type: string
+            workingDir:
+              type: string
+            envKeys:
+              type: array
+              items:
+                type: string
+          required: [value, args, workingDir, envKeys]
+        exitCode:
+          type: number
+        durationMs:
+          type: number
+        timedOut:
+          type: boolean
+        stdout:
+          type: string
+        stderr:
+          type: string
+        truncated:
+          type: object
+          properties:
+            stdout:
+              type: boolean
+            stderr:
+              type: boolean
+            maxBytes:
+              type: number
+          required: [stdout, stderr, maxBytes]
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            phase:
+              type: string
+      required:
+        - success
+        - mode
+        - source
+        - runtime
+        - lifecycle
+        - command
+        - exitCode
+        - durationMs
+        - timedOut
+        - stdout
+        - stderr
+        - truncated
