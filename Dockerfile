@@ -16,6 +16,9 @@ FROM deps AS build
 WORKDIR /app
 COPY . .
 
+# Build workspace packages required by runtime imports.
+RUN bun run --filter='@autokestra/plugin-sdk' build
+
 # Build a standalone server binary (no CLI included in the final image).
 RUN bun build --compile --target=bun packages/server/src/entrypoint.ts --outfile /app/autokestra-server
 
