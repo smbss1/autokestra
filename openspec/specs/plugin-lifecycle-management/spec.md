@@ -30,11 +30,11 @@ The runtime MUST cache loaded plugin instances for reuse across task executions.
 
 ### Requirement: Plugin resolution
 
-The runtime MUST resolve plugin references from task types to plugin artifacts. Resolution follows a defined search order.
+The runtime MUST resolve plugin references from task types to plugin artifacts and execute the action name referenced by the task type.
 
-#### Scenario: Resolve installed plugin
+#### Scenario: Resolve installed plugin and targeted action
 - **WHEN** task references `community/slack.send`
-- **THEN** runtime finds plugin at configured plugin directory (`plugins/community/slack/`)
+- **THEN** runtime finds plugin at configured plugin directory and invokes action `send`
 
 #### Scenario: Plugin not found
 - **WHEN** task references `unknown/nonexistent.action`
@@ -42,7 +42,7 @@ The runtime MUST resolve plugin references from task types to plugin artifacts. 
 
 #### Scenario: Action not found in plugin
 - **WHEN** task references `core/http.nonexistent`
-- **THEN** task fails with "Action 'nonexistent' not found in plugin 'core/http'"
+- **THEN** task fails with an actionable error indicating action name and plugin identifier
 
 ### Requirement: Plugin execution context
 
@@ -58,27 +58,15 @@ Each action invocation MUST receive a fresh execution context. Context state is 
 
 ### Requirement: Plugin error handling
 
-The runtime MUST handle all plugin errors gracefully and convert them to task failures with appropriate error messages, including process-based shell execution failures.
+The runtime MUST handle plugin process failures gracefully and convert them to task failures with actionable diagnostics.
 
-#### Scenario: Plugin throws error
-- **WHEN** plugin action throws an error
-- **THEN** task fails with error message extracted from the exception
+#### Scenario: Plugin process protocol failure
+- **WHEN** plugin process exits successfully but writes invalid JSON to stdout
+- **THEN** task fails with protocol/contract error indicating invalid plugin output
 
 #### Scenario: Plugin timeout
 - **WHEN** plugin action exceeds timeout
-- **THEN** task fails with timeout error and plugin instance is cleaned up
-
-#### Scenario: Plugin crash
-- **WHEN** plugin causes WASM trap
-- **THEN** task fails with crash error and no resource leaks occur
-
-#### Scenario: Shell command exits non-zero
-- **WHEN** `core/bash.exec` command exits with non-zero code
-- **THEN** runtime reports task failure with structured plugin output including exit code and captured stderr
-
-#### Scenario: Shell process output is invalid JSON
-- **WHEN** shell plugin process returns non-JSON stdout payload
-- **THEN** runtime fails task with actionable protocol error indicating invalid plugin output contract
+- **THEN** runtime terminates plugin process, records timeout failure, and keeps scheduler state deterministic
 
 ### Requirement: Plugin unloading
 

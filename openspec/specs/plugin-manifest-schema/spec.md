@@ -42,9 +42,9 @@ Each action in the manifest MUST define:
 - **WHEN** an action defines input schema requiring `url` field
 - **THEN** tasks calling this action with missing `url` fail input validation before execution
 
-#### Scenario: Action execution with valid inputs
-- **WHEN** a task provides inputs matching the action's input schema
-- **THEN** the action executes and output is validated against output schema
+#### Scenario: Action selection aligns with task reference
+- **WHEN** task references `type: core/http.get`
+- **THEN** runtime selects action `get` from manifest instead of defaulting to the first declared action
 
 ### Requirement: Permission declarations
 
@@ -60,12 +60,12 @@ The manifest MUST declare all permissions the plugin requires. Plugins have zero
 
 ### Requirement: Manifest schema validation
 
-The manifest parser MUST validate against a JSON Schema and provide clear error messages for invalid manifests.
+The manifest parser MUST validate against a JSON Schema and provide clear error messages for invalid manifests, and local preflight validation MUST use the same schema semantics.
 
 #### Scenario: Schema validation error reporting
 - **WHEN** plugin.yaml has `version: "not-semver"`
-- **THEN** validation fails with "version must be valid semver (e.g., 1.0.0)"
+- **THEN** validation fails with an actionable error indicating semver format is required
 
-#### Scenario: Unknown fields warning
-- **WHEN** plugin.yaml contains fields not in the schema
-- **THEN** validation passes but logs a warning about unknown fields
+#### Scenario: Runtime and local validator parity
+- **WHEN** `workflow plugin validate` reports manifest success
+- **THEN** runtime manifest loading evaluates the same required fields and accepted structures
