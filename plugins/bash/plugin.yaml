@@ -1,10 +1,10 @@
 namespace: core
 name: bash
 version: 0.1.0
-description: "Execute shell commands and inline scripts using bash or sh in trusted mode"
+description: Execute shell commands and inline scripts using bash or sh in trusted mode
 actions:
   - name: exec
-    description: "Execute a command or inline shell script"
+    description: Execute a command or inline shell script
     input:
       type: object
       properties:
@@ -14,7 +14,9 @@ actions:
           type: string
         shell:
           type: string
-          enum: [bash, sh]
+          enum:
+            - bash
+            - sh
         args:
           type: array
           items:
@@ -29,9 +31,6 @@ actions:
           type: string
         timeoutMs:
           type: number
-      anyOf:
-        - required: [command]
-        - required: [script]
     output:
       type: object
       properties:
@@ -39,7 +38,9 @@ actions:
           type: boolean
         shell:
           type: string
-          enum: [bash, sh]
+          enum:
+            - bash
+            - sh
         command:
           type: object
           properties:
@@ -55,7 +56,11 @@ actions:
               type: array
               items:
                 type: string
-          required: [value, args, workingDir, envKeys]
+          required:
+            - value
+            - args
+            - workingDir
+            - envKeys
         exitCode:
           type: number
         durationMs:
@@ -75,7 +80,10 @@ actions:
               type: boolean
             maxBytes:
               type: number
-          required: [stdout, stderr, maxBytes]
+          required:
+            - stdout
+            - stderr
+            - maxBytes
       required:
         - success
         - shell

@@ -14,7 +14,9 @@ export interface Logger {
 }
 
 export interface ActionHandler<TInput = any, TOutput = any> {
+  description?: string
   inputSchema?: BaseSchema<unknown, TInput, any>
+  outputSchema?: BaseSchema<unknown, TOutput, any>
   execute(input: TInput, context: PluginContext): Promise<TOutput>
 }
 
@@ -36,6 +38,23 @@ export interface PluginDefinition {
     license?: string
   }
   actions: Record<string, ActionHandler<any, any>>
+}
+
+export interface PluginManifestAction {
+  name: string
+  description: string
+  input: Record<string, unknown>
+  output: Record<string, unknown>
+}
+
+export interface PluginManifest {
+  namespace: string
+  name: string
+  version: string
+  description?: string
+  author?: string
+  license?: string
+  actions: PluginManifestAction[]
 }
 
 export interface PluginProcessRequest {
@@ -79,6 +98,34 @@ export function definePlugin(definition: PluginDefinition): PluginDefinition {
   }
 
   return definition
+}
+
+export function pluginToManifest(plugin: PluginDefinition): PluginManifest {
+  const actions: PluginManifestAction[] = Object.entries(plugin.actions).map(([actionName, action]) => {
+    if (!action.inputSchema) {
+      throw new Error(`Cannot generate manifest: action '${actionName}' is missing inputSchema`)
+    }
+    if (!action.outputSchema) {
+      throw new Error(`Cannot generate manifest: action '${actionName}' is missing outputSchema`)
+    }
+
+    return {
+      name: actionName,
+      description: action.description ?? actionName,
+      input: schemaToManifestSchema(action.inputSchema),
+      output: schemaToManifestSchema(action.outputSchema),
+    }
+  })
+
+  return {
+    namespace: plugin.metadata.namespace,
+    name: plugin.metadata.name,
+    version: plugin.metadata.version,
+    description: plugin.metadata.description,
+    author: plugin.metadata.author,
+    license: plugin.metadata.license,
+    actions,
+  }
 }
 
 export async function runPluginProcess(
@@ -197,4 +244,118 @@ function formatLog(message: string, args: any[]): string {
     .join(' ')
 
   return `${message} ${extra}`
+}
+
+type ManifestSchema = Record<string, unknown>
+
+function schemaToManifestSchema(schema: BaseSchema<any, any, any>): ManifestSchema {
+  return toManifestSchemaInternal(schema as any)
+}
+
+function toManifestSchemaInternal(schema: any): ManifestSchema {
+  const normalized = normalizeSchema(schema)
+  if (!normalized || normalized.kind !== 'schema') {
+    return { type: 'object' }
+  }
+
+  switch (normalized.type) {
+    case 'string':
+      return { type: 'string' }
+    case 'number':
+      return { type: 'number' }
+    case 'boolean':
+      return { type: 'boolean' }
+    case 'array':
+      return { type: 'array', items: toManifestSchemaInternal(normalized.item) }
+    case 'record':
+      return { type: 'object', additionalProperties: toManifestSchemaInternal(normalized.value) }
+    case 'literal': {
+      const literal = normalized.literal
+      if (typeof literal === 'string') return { type: 'string', enum: [literal] }
+      if (typeof literal === 'number') return { type: 'number', enum: [literal] }
+      if (typeof literal === 'boolean') return { type: 'boolean', enum: [literal] }
+      return { enum: [literal] }
+    }
+    case 'union': {
+      const options = Array.isArray(normalized.options) ? normalized.options : []
+      const literalValues = options
+        .map((option: any) => normalizeSchema(option))
+        .filter((option: any) => option?.type === 'literal')
+        .map((option: any) => option.literal)
+
+      if (literalValues.length === options.length && literalValues.length > 0) {
+        const first = literalValues[0]
+        const enumType = typeof first
+        if (enumType === 'string' || enumType === 'number' || enumType === 'boolean') {
+          return { type: enumType, enum: literalValues }
+        }
+        return { enum: literalValues }
+      }
+
+      return {
+        anyOf: options.map((option: any) => toManifestSchemaInternal(option)),
+      }
+    }
+    case 'object': {
+      const entries = normalized.entries ?? {}
+      const properties: Record<string, unknown> = {}
+      const required: string[] = []
+
+      for (const [key, rawChild] of Object.entries(entries)) {
+        const child = rawChild as any
+        properties[key] = toManifestSchemaInternal(child)
+        if (!isOptionalSchema(child)) {
+          required.push(key)
+        }
+      }
+
+      const objectSchema: Record<string, unknown> = {
+        type: 'object',
+        properties,
+      }
+      if (required.length > 0) {
+        objectSchema.required = required
+      }
+
+      return objectSchema
+    }
+    default:
+      return { type: inferFallbackType(normalized.expects) }
+  }
+}
+
+function normalizeSchema(schema: any): any {
+  let current = schema
+
+  while (current && current.kind === 'schema') {
+    if (Array.isArray(current.pipe)) {
+      const firstSchema = current.pipe.find((entry: any) => entry?.kind === 'schema')
+      if (firstSchema && firstSchema !== current) {
+        current = firstSchema
+        continue
+      }
+    }
+
+    if (current.type === 'optional' || current.type === 'nullable' || current.type === 'nullish') {
+      current = current.wrapped
+      continue
+    }
+
+    break
+  }
+
+  return current
+}
+
+function isOptionalSchema(schema: any): boolean {
+  return schema?.kind === 'schema' && (schema.type === 'optional' || schema.type === 'nullish')
+}
+
+function inferFallbackType(expects: unknown): string {
+  const raw = typeof expects === 'string' ? expects.toLowerCase() : ''
+  if (raw.includes('string')) return 'string'
+  if (raw.includes('number')) return 'number'
+  if (raw.includes('boolean')) return 'boolean'
+  if (raw.includes('array')) return 'array'
+  return 'object'
 }

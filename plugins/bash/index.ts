@@ -1,5 +1,19 @@
 import { defineAction, definePlugin, runPluginProcess } from '@autokestra/plugin-sdk';
-import { array, check, literal, minLength, minValue, number, object, optional, pipe, record, string, union } from 'valibot';
+import {
+  array,
+  boolean,
+  check,
+  literal,
+  minLength,
+  minValue,
+  number,
+  object,
+  optional,
+  pipe,
+  record,
+  string,
+  union,
+} from 'valibot';
 import { executeExec } from './core';
 
 const execInputSchema = pipe(
@@ -20,8 +34,31 @@ const execInputSchema = pipe(
   }, "Exactly one of 'command' or 'script' must be provided")
 );
 
+const execOutputSchema = object({
+  success: boolean(),
+  shell: union([literal('bash'), literal('sh')]),
+  command: object({
+    value: string(),
+    args: array(string()),
+    workingDir: string(),
+    envKeys: array(string()),
+  }),
+  exitCode: number(),
+  durationMs: number(),
+  timedOut: boolean(),
+  stdout: string(),
+  stderr: string(),
+  truncated: object({
+    stdout: boolean(),
+    stderr: boolean(),
+    maxBytes: number(),
+  }),
+});
+
 const execAction = defineAction({
+  description: 'Execute a command or inline shell script',
   inputSchema: execInputSchema,
+  outputSchema: execOutputSchema,
   async execute(input, context) {
     const result = await executeExec(input, {
       log: context.log,
@@ -53,7 +90,7 @@ const execAction = defineAction({
   },
 });
 
-const plugin = definePlugin({
+export const plugin = definePlugin({
   metadata: {
     namespace: 'core',
     name: 'bash',

@@ -3,8 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "scripts": {
+    "manifest:generate": "bun run ./generate-manifest.ts",
+    "manifest:check": "bun run ./generate-manifest.ts && git diff --exit-code -- plugin.yaml"
+  },
   "dependencies": {
     "@autokestra/plugin-sdk": "workspace:*",
-    "valibot": "^1.2.0"
+    "valibot": "^1.2.0",
+    "yaml": "^2.8.1"
   }
 }

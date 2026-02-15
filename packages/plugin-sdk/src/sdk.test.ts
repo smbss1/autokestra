@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test'
-import { createProcessLogger, defineAction, definePlugin, runPluginProcess } from './sdk'
-import { object, pipe, string, minLength } from 'valibot'
+import { createProcessLogger, defineAction, definePlugin, pluginToManifest, runPluginProcess } from './sdk'
+import { array, boolean, literal, number, object, optional, pipe, record, string, minLength } from 'valibot'
 
 describe('defineAction', () => {
   test('creates an action handler', () => {
@@ -47,6 +47,64 @@ describe('definePlugin', () => {
 
     expect(plugin.metadata.name).toBe('hello-plugin')
     expect(typeof plugin.actions.run.execute).toBe('function')
+  })
+
+  test('converts definePlugin output to plugin manifest using valibot schemas', () => {
+    const plugin = definePlugin({
+      metadata: {
+        name: 'hello-plugin',
+        version: '0.0.1',
+        namespace: 'core',
+        description: 'hello plugin',
+      },
+      actions: {
+        run: defineAction({
+          description: 'run action',
+          inputSchema: object({
+            command: string(),
+            shell: optional(literal('bash')),
+          }),
+          outputSchema: object({
+            success: boolean(),
+            lines: array(string()),
+            code: number(),
+            env: optional(record(string(), string())),
+          }),
+          async execute(input) {
+            return {
+              success: true,
+              lines: [input.command],
+              code: 0,
+            }
+          },
+        }),
+      },
+    })
+
+    const manifest = pluginToManifest(plugin)
+    expect(manifest.namespace).toBe('core')
+    expect(manifest.name).toBe('hello-plugin')
+    expect(manifest.actions).toHaveLength(1)
+    expect(manifest.actions[0].name).toBe('run')
+    expect(manifest.actions[0].description).toBe('run action')
+    expect(manifest.actions[0].input).toEqual({
+      type: 'object',
+      properties: {
+        command: { type: 'string' },
+        shell: { type: 'string', enum: ['bash'] },
+      },
+      required: ['command'],
+    })
+    expect(manifest.actions[0].output).toEqual({
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        lines: { type: 'array', items: { type: 'string' } },
+        code: { type: 'number' },
+        env: { type: 'object', additionalProperties: { type: 'string' } },
+      },
+      required: ['success', 'lines', 'code'],
+    })
   })
 })
 
