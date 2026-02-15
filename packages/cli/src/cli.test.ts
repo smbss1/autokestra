@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'bun:test';
-import { spawn } from 'child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'fs';
+import { spawn, spawnSync } from 'child_process';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import net from 'node:net';
+import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import { startManagedServer } from '@autokestra/server';
 
 const REPO_ROOT = process.cwd();
@@ -75,6 +77,56 @@ async function withTestServer<T>(fn: (ctx: { dir: string; baseUrl: string; apiKe
     process.env.AUTOKESTRA_DISABLE_RUNTIME = previousDisable;
     process.env.AUTOKESTRA_PLUGIN_PATHS = previousPluginPaths;
   }
+}
+
+function createPluginArchive(params: {
+  dir: string;
+  namespace: string;
+  name: string;
+  version: string;
+  mode?: string;
+}): { archivePath: string; checksum: string } {
+  const pluginDir = join(params.dir, `${params.name}-${params.version}`);
+  mkdirSync(join(pluginDir, 'dist'), { recursive: true });
+
+  writeFileSync(
+    join(pluginDir, 'plugin.yaml'),
+    [
+      `namespace: ${params.namespace}`,
+      `name: ${params.name}`,
+      `version: ${params.version}`,
+      'runtime:',
+      '  entrypoint: dist/index.js',
+      'actions:',
+      '  - name: run',
+      '    description: run',
+      '    input: {}',
+      '    output: {}',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  writeFileSync(
+    join(pluginDir, 'dist', 'index.js'),
+    [
+      'const raw = await Bun.stdin.text();',
+      'const payload = JSON.parse(raw || "{}");',
+      'process.stdout.write(JSON.stringify({ ok: true, action: payload.action, mode: "' + (params.mode || params.version) + '" }));',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const archivePath = join(params.dir, `${params.name}-${params.version}.tgz`);
+  const tar = spawnSync('tar', ['-czf', archivePath, '-C', pluginDir, '.']);
+  if (tar.status !== 0) {
+    throw new Error(`Failed to create archive: ${tar.stderr?.toString() || tar.error?.message || 'tar error'}`);
+  }
+
+  const bytes = readFileSync(archivePath);
+  const checksum = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  return { archivePath, checksum };
 }
 
 describe('CLI', () => {
@@ -224,10 +276,15 @@ describe('CLI', () => {
   });
 
   it('should list plugins in JSON format', async () => {
-    const result = await runCli(['plugin', 'list', '--json']);
-    expect(result.code).toBe(0);
-    const parsed = JSON.parse(result.stdout);
-    expect(parsed).toEqual({ plugins: [] });
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const result = await runCli(['plugin', 'list', '--json'], {
+        cwd: dir,
+        env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey },
+      });
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.stdout);
+      expect(parsed).toEqual({ plugins: [] });
+    });
   });
 
   it('should prepare plugin dependencies for one plugin', async () => {
@@ -322,6 +379,197 @@ describe('CLI', () => {
     const result = await runCli(['plugin', 'validate', pluginDir, '--json'], { cwd: dir });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('Invalid manifest');
+  });
+
+  it('should validate plugin using declared runtime entrypoint', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-cli-plugin-declared-entry-'));
+    const pluginDir = join(dir, 'declared-entry');
+    mkdirSync(join(pluginDir, 'dist'), { recursive: true });
+
+    writeFileSync(
+      join(pluginDir, 'plugin.yaml'),
+      [
+        'name: declared-entry',
+        'version: 0.1.0',
+        'namespace: core',
+        'runtime:',
+        '  entrypoint: dist/index.js',
+        'actions:',
+        '  - name: run',
+        '    description: run',
+        '    input: {}',
+        '    output: {}',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    writeFileSync(
+      join(pluginDir, 'dist', 'index.js'),
+      [
+        'const raw = await Bun.stdin.text();',
+        'const payload = JSON.parse(raw || "{}");',
+        'if (payload.action !== "run") { throw new Error("bad action"); }',
+        'process.stdout.write(JSON.stringify({ ok: true, mode: "declared" }));',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const result = await runCli(['plugin', 'validate', pluginDir, '--action', 'run', '--json'], { cwd: dir });
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.ok).toBe(true);
+    expect(parsed.output.mode).toBe('declared');
+  });
+
+  it('should install, list, and remove plugins with default rollback', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const v1 = createPluginArchive({ dir, namespace: 'core', name: 'sample', version: '0.1.0', mode: 'v1' });
+      const v2 = createPluginArchive({ dir, namespace: 'core', name: 'sample', version: '0.2.0', mode: 'v2' });
+      const env = { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey };
+
+      const installV1 = await runCli(
+        ['plugin', 'install', `url:${pathToFileURL(v1.archivePath).toString()}`, '--checksum', v1.checksum, '--json'],
+        { cwd: dir, env },
+      );
+      expect(installV1.code).toBe(0);
+
+      const installV2 = await runCli(
+        ['plugin', 'install', `url:${pathToFileURL(v2.archivePath).toString()}`, '--checksum', v2.checksum, '--json'],
+        { cwd: dir, env },
+      );
+      expect(installV2.code).toBe(0);
+
+      const list = await runCli(['plugin', 'list', '--json'], { cwd: dir, env });
+      expect(list.code).toBe(0);
+      const listed = JSON.parse(list.stdout);
+      expect(listed.plugins).toHaveLength(1);
+      expect(listed.plugins[0].plugin).toBe('core/sample');
+      expect(typeof listed.plugins[0].activeVersion).toBe('string');
+      expect(typeof listed.plugins[0].previousVersion).toBe('string');
+      expect(listed.plugins[0].versions).toHaveLength(2);
+
+      const activeBefore = listed.plugins[0].activeVersion as string;
+      const previousBefore = listed.plugins[0].previousVersion as string;
+
+      const removeActive = await runCli(['plugin', 'remove', `core/sample@${activeBefore}`, '--json'], { cwd: dir, env });
+      expect(removeActive.code).toBe(0);
+      const removed = JSON.parse(removeActive.stdout);
+      expect(removed.removed.rolledBackTo).toBe(previousBefore);
+      expect(removed.removed.activeVersion).toBe(previousBefore);
+    });
+  });
+
+  it('should fail plugin install when checksum mismatches', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const v1 = createPluginArchive({ dir, namespace: 'core', name: 'sample', version: '0.1.0', mode: 'v1' });
+      const badChecksum = `sha256:${'0'.repeat(64)}`;
+
+      const result = await runCli(
+        ['plugin', 'install', `url:${pathToFileURL(v1.archivePath).toString()}`, '--checksum', badChecksum],
+        { cwd: dir, env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey } },
+      );
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('Checksum mismatch');
+    });
+  });
+
+  it('should reject mutable github source references', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const result = await runCli(
+        ['plugin', 'install', 'github:acme/repo@main', '--checksum', `sha256:${'a'.repeat(64)}`],
+        { cwd: dir, env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey } },
+      );
+
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('immutable release tag');
+    });
+  });
+
+  it('should keep active plugin state unchanged when install fails checksum verification', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const v1 = createPluginArchive({ dir, namespace: 'core', name: 'stable', version: '1.0.0', mode: 'stable' });
+      const v2 = createPluginArchive({ dir, namespace: 'core', name: 'stable', version: '1.1.0', mode: 'broken' });
+      const env = { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey };
+
+      const installStable = await runCli(
+        ['plugin', 'install', `url:${pathToFileURL(v1.archivePath).toString()}`, '--checksum', v1.checksum, '--json'],
+        { cwd: dir, env },
+      );
+      expect(installStable.code).toBe(0);
+
+      const badInstall = await runCli(
+        ['plugin', 'install', `url:${pathToFileURL(v2.archivePath).toString()}`, '--checksum', `sha256:${'f'.repeat(64)}`],
+        { cwd: dir, env },
+      );
+      expect(badInstall.code).toBe(1);
+      expect(badInstall.stderr).toContain('Checksum mismatch');
+
+      const list = await runCli(['plugin', 'list', '--json'], { cwd: dir, env });
+      expect(list.code).toBe(0);
+      const parsed = JSON.parse(list.stdout);
+      expect(parsed.plugins).toHaveLength(1);
+      expect(parsed.plugins[0].activeVersion).toBe('1.0.0');
+    });
+  });
+
+  it('should allow legacy local plugins to coexist with registry-installed plugins', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const pluginsPath = join(dir, 'plugins');
+      const legacyDir = join(pluginsPath, 'legacy');
+      mkdirSync(legacyDir, { recursive: true });
+
+      writeFileSync(
+        join(legacyDir, 'plugin.yaml'),
+        [
+          'name: legacy',
+          'version: 0.1.0',
+          'namespace: core',
+          'actions:',
+          '  - name: run',
+          '    description: run',
+          '    input: {}',
+          '    output: {}',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+
+      writeFileSync(
+        join(legacyDir, 'index.ts'),
+        [
+          'const raw = await Bun.stdin.text();',
+          'const payload = JSON.parse(raw || "{}");',
+          'if (payload.action !== "run") throw new Error("unsupported");',
+          'process.stdout.write(JSON.stringify({ ok: true, mode: "legacy" }));',
+          '',
+        ].join('\n'),
+        'utf8',
+      );
+
+      const legacyValidateBefore = await runCli(['plugin', 'validate', legacyDir, '--action', 'run', '--json'], {
+        cwd: dir,
+        env: { AUTOKESTRA_PLUGIN_PATHS: pluginsPath },
+      });
+      expect(legacyValidateBefore.code).toBe(0);
+
+      const registryPlugin = createPluginArchive({ dir, namespace: 'core', name: 'registry-sample', version: '0.5.0' });
+      const installRegistry = await runCli(
+        ['plugin', 'install', `url:${pathToFileURL(registryPlugin.archivePath).toString()}`, '--checksum', registryPlugin.checksum, '--json'],
+        { cwd: dir, env: { AUTOKESTRA_PLUGIN_PATHS: pluginsPath, AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey } },
+      );
+      expect(installRegistry.code).toBe(0);
+
+      const legacyValidateAfter = await runCli(['plugin', 'validate', legacyDir, '--action', 'run', '--json'], {
+        cwd: dir,
+        env: { AUTOKESTRA_PLUGIN_PATHS: pluginsPath },
+      });
+      expect(legacyValidateAfter.code).toBe(0);
+      const legacyParsed = JSON.parse(legacyValidateAfter.stdout);
+      expect(legacyParsed.output.mode).toBe('legacy');
+    });
   });
 
   it('should exit with error for unimplemented commands', async () => {

@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as yaml from 'js-yaml'
 import Ajv from 'ajv'
 import { PluginManifest, pluginManifestSchema } from '@autokestra/plugin-sdk'
+import { getDeclaredEntrypoint } from './entrypoint'
 
 const ajv = new Ajv({ allErrors: true })
 
@@ -18,7 +19,7 @@ export function loadManifest(pluginPath: string): PluginManifest {
   try {
     data = yaml.load(content)
   } catch (err) {
-    throw new Error(`Invalid YAML in ${manifestPath}: ${err.message}`)
+    throw new Error(`Invalid YAML in ${manifestPath}: ${err instanceof Error ? err.message : String(err)}`)
   }
 
   if (!validate(data)) {
@@ -26,5 +27,8 @@ export function loadManifest(pluginPath: string): PluginManifest {
     throw new Error(`Invalid manifest in ${manifestPath}: ${errors}`)
   }
 
-  return data as PluginManifest
+  const manifest = data as PluginManifest
+  getDeclaredEntrypoint(manifest)
+
+  return manifest
 }

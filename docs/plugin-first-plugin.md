@@ -71,6 +71,42 @@ Then trigger workflow with standard commands:
 - `workflow workflow apply <workflow.yaml>`
 - `workflow workflow trigger <workflow-id> --follow`
 
+## Runtime Entrypoint Compatibility
+
+Autokestra resolves plugin process entrypoints in this order:
+
+1. `runtime.entrypoint` declared in `plugin.yaml`
+2. Legacy fallback: `index.ts` at plugin root
+
+For registry-distributed artifacts (v0.2 flow), declare `runtime.entrypoint` explicitly.
+
+Example:
+
+```yaml
+namespace: core
+name: hello-plugin
+version: 0.1.0
+runtime:
+  entrypoint: dist/index.js
+actions:
+  - name: run
+    description: Run hello action
+    input: {}
+    output: {}
+```
+
+### Built artifact layout example
+
+```text
+hello-plugin-0.1.0.tgz
+└── plugin root
+    ├── plugin.yaml
+    └── dist/
+        └── index.js
+```
+
+This keeps installed plugins lightweight by avoiding per-plugin `node_modules`.
+
 ## Choosing `core/bash.exec` vs `core/script.run`
 
 - Use `core/bash.exec` when you need direct shell commands or inline shell scripts (`bash` or `sh`).

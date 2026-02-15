@@ -25,6 +25,17 @@
     "license": {
       "type": "string"
     },
+    "runtime": {
+      "type": "object",
+      "properties": {
+        "entrypoint": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative plugin runtime entrypoint path"
+        }
+      },
+      "required": ["entrypoint"]
+    },
     "actions": {
       "type": "array",
       "items": {
