@@ -71,6 +71,27 @@ export interface ProcessBootstrapOptions {
   contextFactory?: (actionName: string) => PluginContext
 }
 
+export type StreamPassthroughMode = 'prefixed' | 'raw'
+
+export interface StreamCollectionOptions {
+  stdout: ReadableStream
+  stderr: ReadableStream
+  log: Logger
+  passthroughMode?: StreamPassthroughMode
+  stdoutPrefix?: string
+  stderrPrefix?: string
+  maxCaptureBytesPerStream?: number
+  maxLogLinesPerStream?: number
+  maxLogLineChars?: number
+}
+
+export interface StreamCollectionResult {
+  stdout: string
+  stderr: string
+  stdoutTruncated: boolean
+  stderrTruncated: boolean
+}
+
 export function defineAction<TSchema extends BaseSchema<any, any, any>, TOutput = any>(
   handler: SchemaActionHandler<TSchema, TOutput>
 ): SchemaActionHandler<TSchema, TOutput>
@@ -230,6 +251,47 @@ export function createProcessLogger(
   }
 }
 
+export async function collectPluginStreams(options: StreamCollectionOptions): Promise<StreamCollectionResult> {
+  const maxCaptureBytesPerStream = options.maxCaptureBytesPerStream ?? 1024 * 1024
+  const maxLogLinesPerStream = options.maxLogLinesPerStream ?? 200
+  const maxLogLineChars = options.maxLogLineChars ?? 2000
+  const passthroughMode = options.passthroughMode ?? 'prefixed'
+  const stdoutPrefix = options.stdoutPrefix ?? '[stdout] '
+  const stderrPrefix = options.stderrPrefix ?? '[stderr] '
+
+  const [stdoutResult, stderrResult] = await Promise.all([
+    collectSingleStream({
+      stream: options.stdout,
+      streamName: 'stdout',
+      log: options.log,
+      level: 'info',
+      passthroughMode,
+      prefix: stdoutPrefix,
+      maxCaptureBytes: maxCaptureBytesPerStream,
+      maxLogLines: maxLogLinesPerStream,
+      maxLogLineChars,
+    }),
+    collectSingleStream({
+      stream: options.stderr,
+      streamName: 'stderr',
+      log: options.log,
+      level: 'warn',
+      passthroughMode,
+      prefix: stderrPrefix,
+      maxCaptureBytes: maxCaptureBytesPerStream,
+      maxLogLines: maxLogLinesPerStream,
+      maxLogLineChars,
+    }),
+  ])
+
+  return {
+    stdout: stdoutResult.value,
+    stderr: stderrResult.value,
+    stdoutTruncated: stdoutResult.truncated,
+    stderrTruncated: stderrResult.truncated,
+  }
+}
+
 function formatLog(message: string, args: any[]): string {
   if (!args?.length) return message
   const extra = args
@@ -244,6 +306,117 @@ function formatLog(message: string, args: any[]): string {
     .join(' ')
 
   return `${message} ${extra}`
+}
+
+type LoggerLevel = 'info' | 'warn'
+
+type SingleStreamResult = {
+  value: string
+  truncated: boolean
+}
+
+async function collectSingleStream(params: {
+  stream: ReadableStream
+  streamName: 'stdout' | 'stderr'
+  log: Logger
+  level: LoggerLevel
+  passthroughMode: StreamPassthroughMode
+  prefix: string
+  maxCaptureBytes: number
+  maxLogLines: number
+  maxLogLineChars: number
+}): Promise<SingleStreamResult> {
+  const reader = params.stream.getReader()
+  const decoder = new TextDecoder()
+
+  const capturedChunks: Uint8Array[] = []
+  let capturedBytes = 0
+  let outputTruncated = false
+
+  let pending = ''
+  let totalLines = 0
+  let loggedLines = 0
+  let lineLengthTruncated = false
+
+  const logLine = (rawLine: string) => {
+    const line = rawLine.trimEnd()
+    if (!line.length) return
+
+    totalLines += 1
+    if (loggedLines >= params.maxLogLines) {
+      return
+    }
+
+    const formatted =
+      line.length > params.maxLogLineChars
+        ? `${line.slice(0, params.maxLogLineChars)}...[TRUNCATED]`
+        : line
+    if (line.length > params.maxLogLineChars) {
+      lineLengthTruncated = true
+    }
+
+    const message = params.passthroughMode === 'raw' ? formatted : `${params.prefix}${formatted}`
+    if (params.level === 'warn') params.log.warn(message)
+    else params.log.info(message)
+
+    loggedLines += 1
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      if (capturedBytes < params.maxCaptureBytes) {
+        const remaining = params.maxCaptureBytes - capturedBytes
+        if (value.byteLength <= remaining) {
+          capturedChunks.push(value)
+          capturedBytes += value.byteLength
+        } else {
+          capturedChunks.push(value.subarray(0, remaining))
+          capturedBytes += remaining
+          outputTruncated = true
+        }
+      } else {
+        outputTruncated = true
+      }
+
+      pending += decoder.decode(value, { stream: true })
+      const lines = pending.split(/\r?\n/)
+      pending = lines.pop() || ''
+      for (const line of lines) {
+        logLine(line)
+      }
+
+      const maxPendingLineChars = params.maxLogLineChars * 4
+      while (pending.length > maxPendingLineChars) {
+        logLine(pending.slice(0, maxPendingLineChars))
+        pending = pending.slice(maxPendingLineChars)
+        lineLengthTruncated = true
+      }
+    }
+
+    pending += decoder.decode()
+    if (pending.length > 0) {
+      logLine(pending)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  if (totalLines > loggedLines || lineLengthTruncated || outputTruncated) {
+    params.log.warn(`${params.streamName} logs truncated`, {
+      totalLines,
+      loggedLines,
+      lineLengthTruncated,
+      outputTruncated,
+    })
+  }
+
+  return {
+    value: Buffer.concat(capturedChunks.map((chunk) => Buffer.from(chunk))).toString('utf8'),
+    truncated: outputTruncated,
+  }
 }
 
 type ManifestSchema = Record<string, unknown>

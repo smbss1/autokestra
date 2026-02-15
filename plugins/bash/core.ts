@@ -56,11 +56,110 @@ export class BashPluginError extends Error {
 
 const DEFAULT_TIMEOUT_MS = 120000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+const MAX_LOG_LINES_PER_STREAM = 200;
+const MAX_LOG_LINE_CHARS = 2000;
+const MAX_PENDING_LINE_CHARS = MAX_LOG_LINE_CHARS * 4;
 
-export function trimOutput(text: string, maxBytes = MAX_OUTPUT_BYTES): { value: string; truncated: boolean } {
-  const buffer = Buffer.from(text, 'utf8');
-  if (buffer.length <= maxBytes) return { value: text, truncated: false };
-  return { value: buffer.subarray(0, maxBytes).toString('utf8'), truncated: true };
+type StreamCollectResult = {
+  value: string;
+  truncated: boolean;
+};
+
+async function collectStream(
+  stream: ReadableStream,
+  context: ExecutionContext,
+  streamName: 'stdout' | 'stderr'
+): Promise<StreamCollectResult> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  const logger = streamName === 'stderr' ? context.log.warn : context.log.info;
+
+  const capturedChunks: Uint8Array[] = [];
+  let capturedBytes = 0;
+  let outputTruncated = false;
+
+  let pending = '';
+  let totalLines = 0;
+  let loggedLines = 0;
+  let lineLengthTruncated = false;
+
+  const logLine = (rawLine: string) => {
+    const line = rawLine.trimEnd();
+    if (!line.length) return;
+
+    totalLines += 1;
+    if (loggedLines >= MAX_LOG_LINES_PER_STREAM) {
+      return;
+    }
+
+    const formatted =
+      line.length > MAX_LOG_LINE_CHARS
+        ? `${line.slice(0, MAX_LOG_LINE_CHARS)}...[TRUNCATED]`
+        : line;
+
+    if (line.length > MAX_LOG_LINE_CHARS) {
+      lineLengthTruncated = true;
+    }
+
+    logger(`[${streamName}] ${formatted}`);
+    loggedLines += 1;
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      if (capturedBytes < MAX_OUTPUT_BYTES) {
+        const remaining = MAX_OUTPUT_BYTES - capturedBytes;
+        if (value.byteLength <= remaining) {
+          capturedChunks.push(value);
+          capturedBytes += value.byteLength;
+        } else {
+          capturedChunks.push(value.subarray(0, remaining));
+          capturedBytes += remaining;
+          outputTruncated = true;
+        }
+      } else {
+        outputTruncated = true;
+      }
+
+      pending += decoder.decode(value, { stream: true });
+
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() || '';
+      for (const line of lines) {
+        logLine(line);
+      }
+
+      while (pending.length > MAX_PENDING_LINE_CHARS) {
+        logLine(pending.slice(0, MAX_PENDING_LINE_CHARS));
+        pending = pending.slice(MAX_PENDING_LINE_CHARS);
+        lineLengthTruncated = true;
+      }
+    }
+
+    pending += decoder.decode();
+    if (pending.length > 0) {
+      logLine(pending);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (totalLines > loggedLines || lineLengthTruncated || outputTruncated) {
+    context.log.warn(`${streamName} logs truncated`, {
+      totalLines,
+      loggedLines,
+      lineLengthTruncated,
+      outputTruncated,
+    });
+  }
+
+  return {
+    value: Buffer.concat(capturedChunks.map((chunk) => Buffer.from(chunk))).toString('utf8'),
+    truncated: outputTruncated,
+  };
 }
 
 function resolveWorkingDir(input: ExecInput): string {
@@ -115,7 +214,8 @@ async function executeShell(params: {
   cwd: string;
   env?: Record<string, string>;
   timeoutMs: number;
-}): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean; durationMs: number }> {
+  context: ExecutionContext;
+}): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean; durationMs: number; stdoutTruncated: boolean; stderrTruncated: boolean }> {
   const started = Date.now();
 
   const proc = Bun.spawn([params.shell, '-lc', params.command], {
@@ -129,42 +229,31 @@ async function executeShell(params: {
   let timedOut = false;
 
   try {
-    const executionPromise = Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+    timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        proc.kill();
+      } catch {
+        // no-op
+      }
+    }, params.timeoutMs);
+
+    const [stdoutResult, stderrResult, exitCode] = await Promise.all([
+      collectStream(proc.stdout, params.context, 'stdout'),
+      collectStream(proc.stderr, params.context, 'stderr'),
       proc.exited,
-    ]).then(([stdout, stderr, exitCode]) => ({
-      stdout,
-      stderr,
-      exitCode,
-      timedOut: false,
+    ]);
+
+    return {
+      stdout: stdoutResult.value,
+      stderr: stderrResult.value,
+      exitCode: timedOut ? 124 : exitCode,
+      timedOut,
       durationMs: Date.now() - started,
-    }));
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        timedOut = true;
-        try {
-          proc.kill();
-        } catch {
-          // no-op
-        }
-        reject(new BashPluginError('TIMEOUT', 'execute', `Command timed out after ${params.timeoutMs}ms`));
-      }, params.timeoutMs);
-    });
-
-    return await Promise.race([executionPromise, timeoutPromise]);
+      stdoutTruncated: stdoutResult.truncated,
+      stderrTruncated: stderrResult.truncated,
+    };
   } catch (error) {
-    if (timedOut) {
-      return {
-        stdout: '',
-        stderr: '',
-        exitCode: 124,
-        timedOut: true,
-        durationMs: Date.now() - started,
-      };
-    }
-
     if (error instanceof BashPluginError) throw error;
     throw new BashPluginError('EXECUTION_ERROR', 'execute', error instanceof Error ? error.message : String(error));
   } finally {
@@ -189,10 +278,9 @@ export async function executeExec(input: ExecInput, context: ExecutionContext): 
     cwd: workingDir,
     env: input.env,
     timeoutMs,
+    context,
   });
 
-  const stdout = trimOutput(result.stdout, MAX_OUTPUT_BYTES);
-  const stderr = trimOutput(result.stderr, MAX_OUTPUT_BYTES);
   const success = !result.timedOut && result.exitCode === 0;
 
   const output: ExecOutput = {
@@ -207,11 +295,11 @@ export async function executeExec(input: ExecInput, context: ExecutionContext): 
     exitCode: result.exitCode,
     durationMs: result.durationMs,
     timedOut: result.timedOut,
-    stdout: stdout.value,
-    stderr: stderr.value,
+    stdout: result.stdout,
+    stderr: result.stderr,
     truncated: {
-      stdout: stdout.truncated,
-      stderr: stderr.truncated,
+      stdout: result.stdoutTruncated,
+      stderr: result.stderrTruncated,
       maxBytes: MAX_OUTPUT_BYTES,
     },
   };

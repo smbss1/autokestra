@@ -12,6 +12,28 @@ const logger = {
 };
 
 describe('bash plugin execution', () => {
+  test('forwards command stdout to logger', async () => {
+    const entries: string[] = [];
+    const capturingLogger = {
+      info: (message: string) => entries.push(`INFO:${message}`),
+      warn: (message: string) => entries.push(`WARN:${message}`),
+      error: () => undefined,
+      debug: () => undefined,
+    };
+
+    const output = await executeExec(
+      {
+        command: 'echo visible-log-line',
+        shell: 'bash',
+        timeoutMs: 10_000,
+      },
+      { log: capturingLogger }
+    );
+
+    expect(output.success).toBe(true);
+    expect(entries.some((entry) => entry.includes('[stdout] visible-log-line'))).toBe(true);
+  });
+
   test('executes command successfully', async () => {
     const output = await executeExec(
       {

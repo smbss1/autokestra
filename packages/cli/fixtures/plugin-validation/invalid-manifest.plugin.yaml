@@ -1,0 +1,5 @@
+namespace: core
+name: Invalid Plugin Name
+version: not-semver
+actions:
+  - description: missing action name and schemas

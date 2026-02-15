@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { createProcessLogger, defineAction, definePlugin, pluginToManifest, runPluginProcess } from './sdk'
+import { collectPluginStreams, createProcessLogger, defineAction, definePlugin, pluginToManifest, runPluginProcess } from './sdk'
 import { array, boolean, literal, number, object, optional, pipe, record, string, minLength } from 'valibot'
 
 describe('defineAction', () => {
@@ -215,5 +215,38 @@ describe('createProcessLogger', () => {
     const parsed = JSON.parse(lines[0].trim())
     expect(parsed.level).toBe('INFO')
     expect(parsed.message).toContain('[test/logger] hello')
+  })
+})
+
+describe('collectPluginStreams', () => {
+  test('captures streams and logs with prefixed mode by default', async () => {
+    const logs: string[] = []
+    const log = {
+      info: (message: string) => logs.push(`INFO:${message}`),
+      warn: (message: string) => logs.push(`WARN:${message}`),
+      error: () => undefined,
+      debug: () => undefined,
+    }
+
+    const result = await collectPluginStreams({
+      stdout: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('hello\\n'))
+          controller.close()
+        },
+      }),
+      stderr: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('warn-line\\n'))
+          controller.close()
+        },
+      }),
+      log,
+    })
+
+    expect(result.stdout).toContain('hello')
+    expect(result.stderr).toContain('warn-line')
+    expect(logs.some((entry) => entry.includes('INFO:[stdout] hello'))).toBe(true)
+    expect(logs.some((entry) => entry.includes('WARN:[stderr] warn-line'))).toBe(true)
   })
 })
