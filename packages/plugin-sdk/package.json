@@ -9,7 +9,9 @@
     "format": "bunx prettier --write src/**/*.ts",
     "test": "bun test"
   },
-  "dependencies": {},
+  "dependencies": {
+    "valibot": "^1.2.0"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0"
   }

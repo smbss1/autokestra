@@ -1,4 +1,5 @@
 export * from './types'
+import { safeParse, type BaseSchema } from 'valibot'
 
 export interface PluginContext {
   log: Logger
@@ -13,7 +14,16 @@ export interface Logger {
 }
 
 export interface ActionHandler<TInput = any, TOutput = any> {
+  inputSchema?: BaseSchema<unknown, TInput, any>
   execute(input: TInput, context: PluginContext): Promise<TOutput>
+}
+
+type SchemaOutput<TSchema extends BaseSchema<any, any, any>> =
+  TSchema extends BaseSchema<any, infer TOutput, any> ? TOutput : never
+
+export interface SchemaActionHandler<TSchema extends BaseSchema<any, any, any>, TOutput = any>
+  extends ActionHandler<SchemaOutput<TSchema>, TOutput> {
+  inputSchema: TSchema
 }
 
 export interface PluginDefinition {
@@ -42,6 +52,12 @@ export interface ProcessBootstrapOptions {
   contextFactory?: (actionName: string) => PluginContext
 }
 
+export function defineAction<TSchema extends BaseSchema<any, any, any>, TOutput = any>(
+  handler: SchemaActionHandler<TSchema, TOutput>
+): SchemaActionHandler<TSchema, TOutput>
+export function defineAction<TInput = any, TOutput = any>(
+  handler: ActionHandler<TInput, TOutput>
+): ActionHandler<TInput, TOutput>
 export function defineAction<TInput = any, TOutput = any>(
   handler: ActionHandler<TInput, TOutput>
 ) {
@@ -88,8 +104,46 @@ export async function runPluginProcess(
       log: createProcessLogger(`[${plugin.metadata.namespace}/${plugin.metadata.name}.${request.action}]`, io.writeStderr),
     } as PluginContext)
 
-  const result = await action.execute(request.input, context)
+  const parsedInput = parseActionInput(request.action, action, request.input)
+  const result = await action.execute(parsedInput, context)
   io.writeStdout(JSON.stringify(result))
+}
+
+function parseActionInput<TInput, TOutput>(
+  actionName: string,
+  action: ActionHandler<TInput, TOutput>,
+  input: unknown
+): TInput {
+  if (!action.inputSchema) {
+    return input as TInput
+  }
+
+  const parsed = safeParse(action.inputSchema, input)
+  if (parsed.success) {
+    return parsed.output
+  }
+
+  const firstIssue = parsed.issues[0]
+  const issuePath = toPathString(firstIssue?.path)
+  const message = firstIssue?.message ?? 'Unknown validation error'
+  throw new Error(
+    `Invalid input for action '${actionName}'${issuePath ? ` at ${issuePath}` : ''}: ${message}`
+  )
+}
+
+function toPathString(path: any[] | undefined): string {
+  if (!path || path.length === 0) return ''
+
+  let result = ''
+  for (const segment of path) {
+    const key = segment?.key
+    if (typeof key === 'number') {
+      result += `[${key}]`
+    } else if (typeof key === 'string') {
+      result += result ? `.${key}` : key
+    }
+  }
+  return result
 }
 
 export function parsePluginProcessRequest(raw: string): PluginProcessRequest {

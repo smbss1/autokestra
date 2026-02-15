@@ -71,6 +71,13 @@ Then trigger workflow with standard commands:
 - `workflow workflow apply <workflow.yaml>`
 - `workflow workflow trigger <workflow-id> --follow`
 
+## Choosing `core/bash.exec` vs `core/script.run`
+
+- Use `core/bash.exec` when you need direct shell commands or inline shell scripts (`bash` or `sh`).
+- Use `core/script.run` when you need JS/TS project execution with runtime selection, install behavior, and lifecycle phases.
+- `core/bash.exec` always treats non-zero exit codes as task failures.
+- In trusted mode, `core/bash.exec` intentionally allows arbitrary valid shell commands (no command allowlist filtering).
+
 ## Troubleshooting
 
 ### Manifest validation errors

@@ -1,0 +1,5 @@
+{
+  "command": "echo bash-command-ok",
+  "shell": "bash",
+  "timeoutMs": 10000
+}

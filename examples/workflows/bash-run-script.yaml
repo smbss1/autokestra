@@ -1,0 +1,13 @@
+id: bash_run_script
+enabled: true
+apiVersion: v1
+
+tasks:
+  - id: run_script
+    type: core/bash.exec
+    inputs:
+      script: |
+        echo "script start"
+        echo "workspace: $(pwd)"
+      shell: sh
+      timeoutMs: 30000

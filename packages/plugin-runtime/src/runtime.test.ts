@@ -116,6 +116,43 @@ main().catch((err) => {
     }
   })
 
+  test('reports protocol contract violation with plugin/action context for bash plugin', async () => {
+    const runtime = new ProcessRuntime()
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-plugin-'))
+
+    try {
+      const pluginEntry = join(dir, 'index.ts')
+      writeFileSync(pluginEntry, `process.stdout.write('not-json')`)
+
+      await expect(
+        runtime.execute(
+          {
+            name: 'bash',
+            path: dir,
+            manifest: {
+              name: 'bash',
+              version: '0.1.0',
+              namespace: 'core',
+              actions: [
+                {
+                  name: 'exec',
+                  description: 'exec',
+                  input: {},
+                  output: {},
+                },
+              ],
+            } as any,
+          },
+          'exec',
+          { command: 'echo hi' },
+          10_000,
+        )
+      ).rejects.toThrow('Invalid plugin output for core/bash.exec')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('fails when requested action does not exist in manifest', async () => {
     const runtime = new ProcessRuntime()
     const dir = mkdtempSync(join(tmpdir(), 'autokestra-plugin-'))

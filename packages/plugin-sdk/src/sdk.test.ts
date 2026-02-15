@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'bun:test'
 import { createProcessLogger, defineAction, definePlugin, runPluginProcess } from './sdk'
+import { object, pipe, string, minLength } from 'valibot'
 
 describe('defineAction', () => {
   test('creates an action handler', () => {
@@ -10,6 +11,20 @@ describe('defineAction', () => {
     })
 
     expect(typeof handler.execute).toBe('function')
+  })
+
+  test('supports valibot schema and exposes typed validated input', async () => {
+    const handler = defineAction({
+      inputSchema: object({
+        value: pipe(string(), minLength(1)),
+      }),
+      async execute(input) {
+        return { value: input.value }
+      },
+    })
+
+    const result = await handler.execute({ value: 'ok' }, { log: createProcessLogger('[test]') })
+    expect(result).toEqual({ value: 'ok' })
   })
 })
 
@@ -98,6 +113,36 @@ describe('runPluginProcess', () => {
         },
       })
     ).rejects.toThrow('Unsupported action: missing')
+  })
+
+  test('validates action input using valibot schema before execute', async () => {
+    const plugin = definePlugin({
+      metadata: {
+        name: 'example',
+        version: '0.0.1',
+        namespace: 'test',
+      },
+      actions: {
+        echo: defineAction({
+          inputSchema: object({
+            value: pipe(string(), minLength(1)),
+          }),
+          async execute(input: { value: string }) {
+            return { value: input.value }
+          },
+        }),
+      },
+    })
+
+    await expect(
+      runPluginProcess(plugin, {
+        io: {
+          readStdin: async () => JSON.stringify({ action: 'echo', input: { value: '' } }),
+          writeStdout: () => {},
+          writeStderr: () => {},
+        },
+      })
+    ).rejects.toThrow("Invalid input for action 'echo' at value")
   })
 })
 

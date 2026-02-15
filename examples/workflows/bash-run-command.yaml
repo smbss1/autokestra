@@ -1,0 +1,11 @@
+id: bash_run_command
+enabled: true
+apiVersion: v1
+
+tasks:
+  - id: run_command
+    type: core/bash.exec
+    inputs:
+      command: "echo hello-from-bash-plugin"
+      shell: bash
+      timeoutMs: 30000

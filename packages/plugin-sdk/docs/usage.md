@@ -8,6 +8,7 @@ Canonical onboarding guide:
 
 ```typescript
 import { defineAction, definePlugin, runPluginProcess } from '@autokestra/plugin-sdk'
+import { object, pipe, string, minLength, optional, number } from 'valibot'
 
 const plugin = definePlugin({
   metadata: {
@@ -17,9 +18,13 @@ const plugin = definePlugin({
   },
   actions: {
     run: defineAction({
-      async execute(input: { url: string }, context) {
+      inputSchema: object({
+        url: pipe(string(), minLength(1)),
+        timeoutMs: optional(number()),
+      }),
+      async execute(input, context) {
         context.log.info(`Fetching ${input.url}`)
-        const response = await fetch(input.url)
+        const response = await fetch(input.url, { signal: AbortSignal.timeout(input.timeoutMs ?? 30_000) })
         return { data: await response.text() }
       },
     }),
@@ -33,6 +38,9 @@ if (import.meta.main) {
   })
 }
 ```
+
+`defineAction` accepts an optional Valibot `inputSchema`.
+When provided, `runPluginProcess` validates/parses `request.input` with Valibot before calling `execute`, and `execute` receives only the validated output shape.
 
 ## Recommended Patterns
 

@@ -1,0 +1,10 @@
+{
+  "name": "@autokestra/plugin-bash",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@autokestra/plugin-sdk": "workspace:*",
+    "valibot": "^1.2.0"
+  }
+}

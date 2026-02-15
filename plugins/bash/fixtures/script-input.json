@@ -1,0 +1,5 @@
+{
+  "script": "echo script-line-1\necho script-line-2",
+  "shell": "sh",
+  "timeoutMs": 10000
+}

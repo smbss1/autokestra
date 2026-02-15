@@ -1,0 +1,88 @@
+namespace: core
+name: bash
+version: 0.1.0
+description: "Execute shell commands and inline scripts using bash or sh in trusted mode"
+actions:
+  - name: exec
+    description: "Execute a command or inline shell script"
+    input:
+      type: object
+      properties:
+        command:
+          type: string
+        script:
+          type: string
+        shell:
+          type: string
+          enum: [bash, sh]
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        cwd:
+          type: string
+        workspacePath:
+          type: string
+        timeoutMs:
+          type: number
+      anyOf:
+        - required: [command]
+        - required: [script]
+    output:
+      type: object
+      properties:
+        success:
+          type: boolean
+        shell:
+          type: string
+          enum: [bash, sh]
+        command:
+          type: object
+          properties:
+            value:
+              type: string
+            args:
+              type: array
+              items:
+                type: string
+            workingDir:
+              type: string
+            envKeys:
+              type: array
+              items:
+                type: string
+          required: [value, args, workingDir, envKeys]
+        exitCode:
+          type: number
+        durationMs:
+          type: number
+        timedOut:
+          type: boolean
+        stdout:
+          type: string
+        stderr:
+          type: string
+        truncated:
+          type: object
+          properties:
+            stdout:
+              type: boolean
+            stderr:
+              type: boolean
+            maxBytes:
+              type: number
+          required: [stdout, stderr, maxBytes]
+      required:
+        - success
+        - shell
+        - command
+        - exitCode
+        - durationMs
+        - timedOut
+        - stdout
+        - stderr
+        - truncated
