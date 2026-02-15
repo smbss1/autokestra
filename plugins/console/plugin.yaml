@@ -2,6 +2,8 @@ name: console
 version: 0.1.0
 namespace: core
 description: "Official core console utilities"
+runtime:
+  entrypoint: dist/index.js
 actions:
   - name: log
     description: "Log a message (goes to plugin stderr so the engine can capture it)"

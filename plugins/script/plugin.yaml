@@ -2,6 +2,8 @@ namespace: core
 name: script
 version: 0.1.0
 description: "Run JS/TS scripts and full package.json projects from local or inline sources"
+runtime:
+  entrypoint: dist/index.js
 actions:
   - name: run
     description: "Run a JavaScript/TypeScript script or project"

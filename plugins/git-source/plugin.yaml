@@ -2,6 +2,8 @@ namespace: core
 name: git-source
 version: 0.1.0
 description: "Checkout Git repositories (public/private) into a local workspace"
+runtime:
+  entrypoint: dist/index.js
 actions:
   - name: checkout
     description: "Clone and checkout a Git repository to a local workspace"

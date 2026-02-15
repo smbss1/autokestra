@@ -2,6 +2,8 @@ name: http
 version: 0.1.0
 namespace: core
 description: "Official core HTTP utilities"
+runtime:
+  entrypoint: dist/index.js
 actions:
   - name: get
     description: "Perform an HTTP GET request"
