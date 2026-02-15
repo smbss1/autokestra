@@ -30,11 +30,28 @@ The runtime MUST cache loaded plugin instances for reuse across task executions.
 
 ### Requirement: Plugin resolution
 
-The runtime MUST resolve plugin references from task types to plugin artifacts. Resolution follows a defined search order.
+The runtime MUST resolve plugin references from task types to installed plugin artifacts. Resolution follows a defined search order and MUST support declared runtime entrypoints.
 
 #### Scenario: Resolve installed plugin
 - **WHEN** task references `community/slack.send`
-- **THEN** runtime finds plugin at configured plugin directory (`plugins/community/slack/`)
+- **THEN** runtime finds active installed plugin artifact for `community/slack`
+- **AND** runtime loads plugin from the installed artifact path
+
+#### Scenario: Resolve declared entrypoint
+- **WHEN** installed plugin manifest declares `runtime.entrypoint: dist/index.js`
+- **THEN** runtime and CLI execute that entrypoint path relative to plugin root
+
+#### Scenario: Backward-compatible fallback entrypoint
+- **WHEN** plugin manifest has no declared runtime entrypoint
+- **THEN** runtime and CLI fallback to legacy `index.ts` entrypoint behavior
+
+#### Scenario: Remove active version auto-rolls back by default
+- **WHEN** user removes an active plugin version and a previous installed version exists
+- **THEN** the system automatically activates the previous version
+
+#### Scenario: Remove active version with rollback opt-out
+- **WHEN** user removes an active plugin version with `--no-rollback`
+- **THEN** the active version is removed without auto-activating a previous version
 
 #### Scenario: Plugin not found
 - **WHEN** task references `unknown/nonexistent.action`
@@ -58,19 +75,15 @@ Each action invocation MUST receive a fresh execution context. Context state is 
 
 ### Requirement: Plugin error handling
 
-The runtime MUST handle all plugin errors gracefully and convert them to task failures with appropriate error messages.
+The runtime MUST handle plugin process failures gracefully and convert them to task failures with actionable diagnostics.
 
-#### Scenario: Plugin throws error
-- **WHEN** plugin action throws an error
-- **THEN** task fails with error message extracted from the exception
+#### Scenario: Plugin process protocol failure
+- **WHEN** plugin process exits successfully but writes invalid JSON to stdout
+- **THEN** task fails with protocol/contract error indicating invalid plugin output
 
 #### Scenario: Plugin timeout
 - **WHEN** plugin action exceeds timeout
-- **THEN** task fails with timeout error and plugin instance is cleaned up
-
-#### Scenario: Plugin crash
-- **WHEN** plugin causes WASM trap
-- **THEN** task fails with crash error and no resource leaks occur
+- **THEN** runtime terminates plugin process, records timeout failure, and keeps scheduler state deterministic
 
 ### Requirement: Plugin unloading
 

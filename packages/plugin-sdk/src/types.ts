@@ -5,6 +5,9 @@ export interface PluginManifest {
   description?: string
   author?: string
   license?: string
+  runtime?: {
+    entrypoint?: string
+  }
   actions: ActionDef[]
   capabilities?: string[]
 }

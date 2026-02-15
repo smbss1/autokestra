@@ -77,6 +77,16 @@ All configuration values can be overridden with environment variables using the 
 
 Environment variables take precedence over the YAML file.
 
+## Plugin Lifecycle (Server-Side)
+
+Plugin lifecycle commands run on the server host via API, not on the CLI machine:
+
+- `workflow plugin install <source> [--checksum sha256:<hex>] [--registry <url>] [--server <url>] [--api-key <key>]`
+- `workflow plugin list [--server <url>] [--api-key <key>]`
+- `workflow plugin remove <namespace/name[@version]|name[@version]> [--no-rollback] [--server <url>] [--api-key <key>]`
+
+For full command details and examples, see `packages/cli/README.md`.
+
 ## Observability
 
 Autokestra provides comprehensive observability features for monitoring workflow executions, debugging issues, and auditing system activity.

@@ -21,6 +21,7 @@ The manifest MUST include the following metadata fields:
 - `description`: human-readable description (optional)
 - `author`: author name or organization (optional)
 - `license`: SPDX license identifier (optional)
+- `runtime.entrypoint`: runtime entrypoint path relative to plugin root for built artifacts (required for registry-distributed artifacts in v0.2)
 
 #### Scenario: Valid plugin identifier format
 - **WHEN** a task references `type: core/http.get`
@@ -29,6 +30,22 @@ The manifest MUST include the following metadata fields:
 #### Scenario: Invalid name format
 - **WHEN** plugin.yaml contains `name: "HTTP Client"` (not kebab-case)
 - **THEN** manifest validation fails with "name must be kebab-case"
+
+#### Scenario: Declared runtime entrypoint
+- **WHEN** plugin.yaml contains `runtime.entrypoint: dist/index.js`
+- **THEN** runtime uses `dist/index.js` as plugin process entrypoint
+
+#### Scenario: Invalid runtime entrypoint format
+- **WHEN** plugin.yaml contains empty or absolute `runtime.entrypoint`
+- **THEN** manifest validation fails with explicit entrypoint format error
+
+#### Scenario: Missing entrypoint in registry artifact
+- **WHEN** a registry-distributed plugin manifest omits `runtime.entrypoint`
+- **THEN** install fails with an error indicating `runtime.entrypoint` is required for registry artifacts
+
+#### Scenario: Missing entrypoint in legacy local plugin
+- **WHEN** a locally discovered legacy plugin manifest omits `runtime.entrypoint`
+- **THEN** runtime keeps backward-compatible `index.ts` fallback behavior
 
 ### Requirement: Action definitions
 
@@ -42,9 +59,9 @@ Each action in the manifest MUST define:
 - **WHEN** an action defines input schema requiring `url` field
 - **THEN** tasks calling this action with missing `url` fail input validation before execution
 
-#### Scenario: Action execution with valid inputs
-- **WHEN** a task provides inputs matching the action's input schema
-- **THEN** the action executes and output is validated against output schema
+#### Scenario: Action selection aligns with task reference
+- **WHEN** task references `type: core/http.get`
+- **THEN** runtime selects action `get` from manifest instead of defaulting to the first declared action
 
 ### Requirement: Permission declarations
 
@@ -60,12 +77,12 @@ The manifest MUST declare all permissions the plugin requires. Plugins have zero
 
 ### Requirement: Manifest schema validation
 
-The manifest parser MUST validate against a JSON Schema and provide clear error messages for invalid manifests.
+The manifest parser MUST validate against a JSON Schema and provide clear error messages for invalid manifests, and local preflight validation MUST use the same schema semantics.
 
 #### Scenario: Schema validation error reporting
 - **WHEN** plugin.yaml has `version: "not-semver"`
-- **THEN** validation fails with "version must be valid semver (e.g., 1.0.0)"
+- **THEN** validation fails with an actionable error indicating semver format is required
 
-#### Scenario: Unknown fields warning
-- **WHEN** plugin.yaml contains fields not in the schema
-- **THEN** validation passes but logs a warning about unknown fields
+#### Scenario: Runtime and local validator parity
+- **WHEN** `workflow plugin validate` reports manifest success
+- **THEN** runtime manifest loading evaluates the same required fields and accepted structures

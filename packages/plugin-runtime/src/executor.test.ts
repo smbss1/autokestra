@@ -68,4 +68,54 @@ process.stdout.write(JSON.stringify({ action: payload.action, ok: true }));
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  test('uses declared runtime entrypoint when provided', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'autokestra-plugin-executor-'))
+    const pluginDir = join(dir, 'declared-entry')
+    mkdirSync(join(pluginDir, 'dist'), { recursive: true })
+
+    const manifest = `namespace: test
+name: declared-entry
+version: 0.0.1
+runtime:
+  entrypoint: dist/index.js
+actions:
+  - name: run
+    description: run action
+    input:
+      type: object
+    output:
+      type: object
+`
+
+    writeFileSync(join(pluginDir, 'plugin.yaml'), manifest, 'utf8')
+    writeFileSync(
+      join(pluginDir, 'dist', 'index.js'),
+      `const raw = await Bun.stdin.text();
+const payload = JSON.parse(raw);
+process.stdout.write(JSON.stringify({ action: payload.action, from: 'declared-entrypoint' }));
+`,
+      'utf8',
+    )
+
+    try {
+      const manager = new PluginManager({ paths: [dir] })
+      const runtime = new ProcessRuntime()
+      const permissions: WorkflowPermissions = { security: 'trusted' }
+      const executor = new PluginExecutor(manager, runtime, permissions)
+
+      const result = await executor.execute(
+        'test',
+        'declared-entry',
+        'run',
+        {},
+        { secrets: {}, vars: {}, env: {} },
+      )
+
+      expect(result.result.action).toBe('run')
+      expect(result.result.from).toBe('declared-entrypoint')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

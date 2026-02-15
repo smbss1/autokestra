@@ -23,6 +23,9 @@ export interface ServerContext {
   secretStore: SecretStore;
   triggerWorkflowExecution?: (input: { workflowId: string; executionId: string }) => Promise<void>;
   preparePluginDependencies?: (input: { name?: string }) => Promise<{ prepared: string[]; skipped: string[]; found: boolean }>;
+  installPlugin?: (input: { source: string; checksum?: string; registryUrl?: string }) => Promise<any>;
+  listInstalledPlugins?: () => Promise<any[]>;
+  removePlugin?: (input: { plugin: string; noRollback?: boolean }) => Promise<any>;
 }
 
 function toWorkflowDto(workflow: StoredWorkflow) {
@@ -289,7 +292,7 @@ export function createApp(ctx: ServerContext) {
       return c.json(apiError('NOT_IMPLEMENTED', 'Workflow triggering is not available in this server mode'), 501);
     }
 
-    let executionId = crypto.randomUUID();
+    let executionId: string = crypto.randomUUID();
     try {
       const contentType = c.req.header('content-type') || '';
       if (contentType.toLowerCase().includes('application/json')) {
@@ -345,6 +348,80 @@ export function createApp(ctx: ServerContext) {
       return c.json({ prepared: result.prepared.length, plugins: result.prepared, skipped: result.skipped });
     } catch (error) {
       return c.json(apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Failed to prepare plugins'), 500);
+    }
+  });
+
+  app.post('/api/v1/plugins/install', async (c) => {
+    if (!ctx.installPlugin) {
+      return c.json(apiError('NOT_IMPLEMENTED', 'Plugin installation is not available in this server mode'), 501);
+    }
+
+    let body: any = {};
+    try {
+      const contentType = (c.req.header('content-type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        body = await c.req.json();
+      }
+    } catch {
+      return c.json(apiError('BAD_REQUEST', 'Expected JSON body when Content-Type is application/json'), 400);
+    }
+
+    const source = typeof body?.source === 'string' ? body.source.trim() : '';
+    if (!source) {
+      return c.json(apiError('VALIDATION_ERROR', 'source must be a non-empty string'), 400);
+    }
+
+    const checksum = typeof body?.checksum === 'string' ? body.checksum.trim() : undefined;
+    const registryUrl = typeof body?.registryUrl === 'string' ? body.registryUrl.trim() : undefined;
+
+    try {
+      const installed = await ctx.installPlugin({ source, checksum, registryUrl });
+      return c.json({ ok: true, installed }, 200);
+    } catch (error) {
+      return c.json(apiError('BAD_REQUEST', error instanceof Error ? error.message : 'Failed to install plugin'), 400);
+    }
+  });
+
+  app.get('/api/v1/plugins', async (c) => {
+    if (!ctx.listInstalledPlugins) {
+      return c.json(apiError('NOT_IMPLEMENTED', 'Plugin listing is not available in this server mode'), 501);
+    }
+
+    try {
+      const plugins = await ctx.listInstalledPlugins();
+      return c.json({ plugins }, 200);
+    } catch (error) {
+      return c.json(apiError('INTERNAL_ERROR', error instanceof Error ? error.message : 'Failed to list plugins'), 500);
+    }
+  });
+
+  app.post('/api/v1/plugins/remove', async (c) => {
+    if (!ctx.removePlugin) {
+      return c.json(apiError('NOT_IMPLEMENTED', 'Plugin removal is not available in this server mode'), 501);
+    }
+
+    let body: any = {};
+    try {
+      const contentType = (c.req.header('content-type') || '').toLowerCase();
+      if (contentType.includes('application/json')) {
+        body = await c.req.json();
+      }
+    } catch {
+      return c.json(apiError('BAD_REQUEST', 'Expected JSON body when Content-Type is application/json'), 400);
+    }
+
+    const plugin = typeof body?.plugin === 'string' ? body.plugin.trim() : '';
+    if (!plugin) {
+      return c.json(apiError('VALIDATION_ERROR', 'plugin must be a non-empty string'), 400);
+    }
+
+    const noRollback = body?.noRollback === true;
+
+    try {
+      const removed = await ctx.removePlugin({ plugin, noRollback });
+      return c.json({ ok: true, removed }, 200);
+    } catch (error) {
+      return c.json(apiError('BAD_REQUEST', error instanceof Error ? error.message : 'Failed to remove plugin'), 400);
     }
   });
 

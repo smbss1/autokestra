@@ -2,6 +2,8 @@ namespace: core
 name: bash
 version: 0.1.0
 description: Execute shell commands and inline scripts using bash or sh in trusted mode
+runtime:
+  entrypoint: dist/index.js
 actions:
   - name: exec
     description: Execute a command or inline shell script

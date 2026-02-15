@@ -6,6 +6,7 @@ import { Engine, runtime } from '@autokestra/engine';
 import type { Config } from '@autokestra/engine/src/config';
 import { runStoredWorkflowOnce } from '@autokestra/engine/src/runtime/workflowRunner';
 import { SecretResolver, SecretStore } from '@autokestra/secrets';
+import { PluginRegistryManager } from './pluginRegistry';
 
 import { createApp } from './app';
 
@@ -143,6 +144,7 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
   const secretStore = new SecretStore();
   const secretResolver = new SecretResolver(secretStore);
   const pluginPaths = parsePluginPaths();
+  const pluginRegistryManager = new PluginRegistryManager(path.resolve(pluginPaths[0] || './plugins'));
 
   const startedAt = Date.now();
   const app = createApp({
@@ -213,6 +215,15 @@ export async function startManagedServer(options: StartManagedServerOptions): Pr
       }
 
       return { prepared, skipped, found: true };
+    },
+    installPlugin: async ({ source, checksum, registryUrl }) => {
+      return await pluginRegistryManager.install(source, { checksum, registryUrl });
+    },
+    listInstalledPlugins: async () => {
+      return await pluginRegistryManager.list();
+    },
+    removePlugin: async ({ plugin, noRollback }) => {
+      return await pluginRegistryManager.remove(plugin, { noRollback });
     },
   });
 

@@ -1,6 +1,7 @@
 import { PluginManifest, ActionDef } from '@autokestra/plugin-sdk'
 import { LogCollector, LogLevel } from '@autokestra/engine/src/execution/logging';
 import * as path from 'node:path'
+import { resolvePluginEntrypoint } from './entrypoint'
 
 export interface PluginRuntime {
   execute(plugin: PluginInfo, actionName: string, input: unknown, timeoutMs?: number, logContext?: LogContext): Promise<unknown>
@@ -43,7 +44,7 @@ export class ProcessRuntime implements PluginRuntime {
       )
     }
     const pluginDir = path.resolve(plugin.path)
-    const entryPoint = path.join(pluginDir, 'index.ts') // Assume index.ts
+    const entryPoint = resolvePluginEntrypoint(pluginDir, plugin.manifest)
 
     const proc = Bun.spawn(['bun', 'run', entryPoint], {
       cwd: pluginDir,

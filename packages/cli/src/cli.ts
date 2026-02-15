@@ -55,10 +55,9 @@ async function readJsonInputFile(inputFile?: string): Promise<unknown> {
 }
 
 async function executePluginProcess(pluginPath: string, action: string, input: unknown): Promise<PluginExecutionResult> {
-  const entryPoint = path.join(pluginPath, 'index.ts');
-  if (!fsSync.existsSync(entryPoint)) {
-    throw new Error(`Plugin entrypoint not found: ${entryPoint}`);
-  }
+  const runtimeModule = await import('../../plugin-runtime/src/entrypoint');
+  const manifest = await loadPluginManifest(pluginPath);
+  const entryPoint = runtimeModule.resolvePluginEntrypoint(pluginPath, manifest);
 
   return await new Promise<PluginExecutionResult>((resolve, reject) => {
     const child = spawn('bun', ['run', entryPoint], {
@@ -95,6 +94,27 @@ function printPluginError(error: unknown, json = false): void {
   const message = error instanceof Error ? error.message : String(error);
   if (json) {
     console.error(JSON.stringify({ ok: false, error: { message } }, null, 2));
+  } else {
+    console.error(message);
+  }
+}
+
+function statusToExitCode(status?: number): number {
+  if (status === 404) return EXIT_NOT_FOUND;
+  if (status === 409) return EXIT_CONFLICT;
+  return EXIT_ERROR;
+}
+
+function statusToErrorCode(status?: number): string {
+  if (status === 404) return 'NOT_FOUND';
+  if (status === 409) return 'CONFLICT';
+  return 'ERROR';
+}
+
+function printCliError(error: unknown, json = false, errorCode = 'ERROR'): void {
+  const message = error instanceof Error ? error.message : String(error);
+  if (json) {
+    console.error(JSON.stringify({ ok: false, error: { code: errorCode, message } }, null, 2));
   } else {
     console.error(message);
   }
@@ -515,7 +535,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error applying workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -533,7 +553,7 @@ program
           const result = await deleteWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
           process.exit(result.deleted ? EXIT_SUCCESS : EXIT_NOT_FOUND);
         } catch (error) {
-          console.error('Error deleting workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -563,7 +583,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error listing workflows:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -581,7 +601,7 @@ program
           const result = await getWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
           process.exit(result.found ? EXIT_SUCCESS : EXIT_NOT_FOUND);
         } catch (error) {
-          console.error('Error getting workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -634,7 +654,7 @@ program
 
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error triggering workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -842,6 +862,48 @@ program
       })
   )
   .addCommand(
+    new Command('install')
+      .description('install a plugin from official registry, github release, or direct URL')
+      .argument('<source>', 'plugin source reference (namespace/name@version | github:owner/repo@tag | url:<artifact-url>)')
+      .option('--checksum <digest>', 'artifact checksum (sha256:<hex>)')
+      .option('--registry <url>', 'official plugin registry base URL')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .option('--json', 'output in JSON format')
+      .action(async (source, options) => {
+        try {
+          const api = resolveApiConfig(options);
+          const result = await requestJson<{ ok: boolean; installed: any }>(
+            api,
+            'POST',
+            '/api/v1/plugins/install',
+            { body: { source: String(source), checksum: options.checksum, registryUrl: options.registry } },
+          );
+          const installed = result.installed;
+
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            console.log(`Installed ${installed.plugin}@${installed.version} (${installed.sourceType})`);
+            console.log(`Checksum: ${installed.checksum}`);
+            console.log(`Active path: ${installed.activePath}`);
+          }
+
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          const status = (error as any)?.status;
+          const message = error instanceof Error ? error.message : String(error);
+          if (status === 404) {
+            console.error('Plugin source not found');
+            process.exit(EXIT_NOT_FOUND);
+          }
+          printPluginError(message, options.json);
+          process.exit(status === 409 ? EXIT_CONFLICT : EXIT_ERROR);
+        }
+      })
+  )
+  .addCommand(
     new Command('prepare')
       .description('prepare plugin dependencies on the server for one plugin or all plugins')
       .argument('[name]', 'plugin name (prepares all plugins if omitted)')
@@ -877,11 +939,15 @@ program
           const status = (error as any)?.status;
           const message = error instanceof Error ? error.message : String(error);
           if (status === 404) {
-            console.error(typeof name === 'string' && name.trim().length > 0 ? `Plugin '${name}' not found` : 'No plugins found');
+            printCliError(
+              typeof name === 'string' && name.trim().length > 0 ? `Plugin '${name}' not found` : 'No plugins found',
+              options.json,
+              'NOT_FOUND',
+            );
             process.exit(EXIT_NOT_FOUND);
           }
-          console.error('Error preparing plugins:', message);
-          process.exit(EXIT_ERROR);
+          printCliError(message, options.json, statusToErrorCode(status));
+          process.exit(statusToExitCode(status));
         }
       })
   )
@@ -896,15 +962,79 @@ program
   )
   .addCommand(
     new Command('list')
-      .description('list available plugins')
+      .description('list installed plugins')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
       .option('--json', 'output in JSON format')
-      .action((options) => {
-        if (options.json) {
-          console.log(JSON.stringify({ plugins: [] }, null, 2));
-        } else {
-          console.log('No plugins found');
+      .action(async (options) => {
+        try {
+          const api = resolveApiConfig(options);
+          const result = await requestJson<{ plugins: any[] }>(api, 'GET', '/api/v1/plugins');
+          const plugins = result.plugins;
+
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else if (plugins.length === 0) {
+            console.log('No plugins found');
+          } else {
+            for (const plugin of plugins) {
+              const active = plugin.activeVersion ? `active=${plugin.activeVersion}` : 'active=none';
+              const previous = plugin.previousVersion ? ` previous=${plugin.previousVersion}` : '';
+              console.log(`${plugin.plugin} (${active}${previous})`);
+            }
+          }
+
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          printPluginError(error, options.json);
+          process.exit(EXIT_ERROR);
         }
-        process.exit(EXIT_SUCCESS);
+      })
+  )
+  .addCommand(
+    new Command('remove')
+      .description('remove an installed plugin version')
+      .argument('<plugin>', 'plugin identifier (namespace/name[@version] or name[@version])')
+      .option('--no-rollback', 'do not auto-rollback when removing an active version')
+      .option('--server <url>', 'server base URL (e.g. http://127.0.0.1:7233)')
+      .option('--api-key <key>', 'server API key (Authorization Bearer)')
+      .option('-c, --config <path>', 'path to YAML config (optional, for defaults)')
+      .option('--json', 'output in JSON format')
+      .action(async (plugin, options) => {
+        try {
+          const api = resolveApiConfig(options);
+          const result = await requestJson<{ ok: boolean; removed: any }>(
+            api,
+            'POST',
+            '/api/v1/plugins/remove',
+            { body: { plugin: String(plugin), noRollback: options.noRollback === true } },
+          );
+          const removed = result.removed;
+
+          if (options.json) {
+            console.log(JSON.stringify(result, null, 2));
+          } else {
+            console.log(`Removed ${removed.plugin}@${removed.removedVersion}`);
+            if (removed.rolledBackTo) {
+              console.log(`Rolled back to ${removed.rolledBackTo}`);
+            }
+            if (removed.activeVersion) {
+              console.log(`Active version: ${removed.activeVersion}`);
+            }
+          }
+
+          process.exit(EXIT_SUCCESS);
+        } catch (error) {
+          const status = (error as any)?.status;
+          const message = error instanceof Error ? error.message : String(error);
+          if (status === 404) {
+            console.error(`Plugin '${plugin}' not found`);
+            process.exit(EXIT_NOT_FOUND);
+          }
+          printPluginError(message, options.json);
+          process.exit(status === 409 ? EXIT_CONFLICT : EXIT_ERROR);
+        }
       })
   )
   .addCommand(
@@ -946,7 +1076,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error listing executions:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -976,7 +1106,7 @@ program
           });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error inspecting execution:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1006,7 +1136,7 @@ program
           });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error getting logs:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1034,7 +1164,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error cleaning up executions:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1057,7 +1187,7 @@ program
           await setSecret({ api: resolveApiConfig(options) }, name, value, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error setting secret:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1075,7 +1205,7 @@ program
           await getSecret({ api: resolveApiConfig(options) }, name, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error getting secret:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1092,7 +1222,7 @@ program
           await listSecrets({ api: resolveApiConfig(options) }, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error listing secrets:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })

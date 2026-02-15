@@ -36,6 +36,9 @@ export interface PluginDefinition {
     description?: string
     author?: string
     license?: string
+    runtime?: {
+      entrypoint?: string
+    }
   }
   actions: Record<string, ActionHandler<any, any>>
 }
@@ -54,6 +57,9 @@ export interface PluginManifest {
   description?: string
   author?: string
   license?: string
+  runtime?: {
+    entrypoint?: string
+  }
   actions: PluginManifestAction[]
 }
 
@@ -145,6 +151,7 @@ export function pluginToManifest(plugin: PluginDefinition): PluginManifest {
     description: plugin.metadata.description,
     author: plugin.metadata.author,
     license: plugin.metadata.license,
+    runtime: plugin.metadata.runtime,
     actions,
   }
 }
