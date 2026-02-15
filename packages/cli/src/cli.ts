@@ -99,6 +99,27 @@ function printPluginError(error: unknown, json = false): void {
   }
 }
 
+function statusToExitCode(status?: number): number {
+  if (status === 404) return EXIT_NOT_FOUND;
+  if (status === 409) return EXIT_CONFLICT;
+  return EXIT_ERROR;
+}
+
+function statusToErrorCode(status?: number): string {
+  if (status === 404) return 'NOT_FOUND';
+  if (status === 409) return 'CONFLICT';
+  return 'ERROR';
+}
+
+function printCliError(error: unknown, json = false, errorCode = 'ERROR'): void {
+  const message = error instanceof Error ? error.message : String(error);
+  if (json) {
+    console.error(JSON.stringify({ ok: false, error: { code: errorCode, message } }, null, 2));
+  } else {
+    console.error(message);
+  }
+}
+
 function configExists(filePath: string): boolean {
   try {
     return fsSync.existsSync(filePath);
@@ -514,7 +535,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error applying workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -532,7 +553,7 @@ program
           const result = await deleteWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
           process.exit(result.deleted ? EXIT_SUCCESS : EXIT_NOT_FOUND);
         } catch (error) {
-          console.error('Error deleting workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -562,7 +583,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error listing workflows:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -580,7 +601,7 @@ program
           const result = await getWorkflow({ api: resolveApiConfig(options) }, id, { json: options.json });
           process.exit(result.found ? EXIT_SUCCESS : EXIT_NOT_FOUND);
         } catch (error) {
-          console.error('Error getting workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -633,7 +654,7 @@ program
 
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error triggering workflow:', error instanceof Error ? error.message : error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -918,11 +939,15 @@ program
           const status = (error as any)?.status;
           const message = error instanceof Error ? error.message : String(error);
           if (status === 404) {
-            console.error(typeof name === 'string' && name.trim().length > 0 ? `Plugin '${name}' not found` : 'No plugins found');
+            printCliError(
+              typeof name === 'string' && name.trim().length > 0 ? `Plugin '${name}' not found` : 'No plugins found',
+              options.json,
+              'NOT_FOUND',
+            );
             process.exit(EXIT_NOT_FOUND);
           }
-          console.error('Error preparing plugins:', message);
-          process.exit(EXIT_ERROR);
+          printCliError(message, options.json, statusToErrorCode(status));
+          process.exit(statusToExitCode(status));
         }
       })
   )
@@ -1051,7 +1076,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error listing executions:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1081,7 +1106,7 @@ program
           });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error inspecting execution:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1111,7 +1136,7 @@ program
           });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error getting logs:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1139,7 +1164,7 @@ program
           );
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error cleaning up executions:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1162,7 +1187,7 @@ program
           await setSecret({ api: resolveApiConfig(options) }, name, value, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error setting secret:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1180,7 +1205,7 @@ program
           await getSecret({ api: resolveApiConfig(options) }, name, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error getting secret:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })
@@ -1197,7 +1222,7 @@ program
           await listSecrets({ api: resolveApiConfig(options) }, { json: options.json });
           process.exit(EXIT_SUCCESS);
         } catch (error) {
-          console.error('Error listing secrets:', error);
+          printCliError(error, options.json);
           process.exit(EXIT_ERROR);
         }
       })

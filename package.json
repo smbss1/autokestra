@@ -11,6 +11,7 @@
   "scripts": {
     "build": "bun run build --filter='*'",
     "build:exe": "bun build packages/cli/index.ts --compile --outfile autokestra",
+    "test:dod:v0.1": "bun test packages/server/src/dodV01.integration.test.ts packages/engine/src/dodV01.execution.integration.test.ts",
     "test": "bun test",
     "lint": "bun run eslint packages/**/*.ts",
     "format": "bun run prettier --write packages/**/*.ts"

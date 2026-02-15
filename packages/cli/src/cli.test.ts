@@ -168,6 +168,39 @@ describe('CLI', () => {
     });
   });
 
+  it('should return stable JSON error object for invalid --server in --json mode', async () => {
+    const result = await runCli([
+      'workflow',
+      'list',
+      '--json',
+      '--server',
+      'bad/path',
+      '--api-key',
+      'k1',
+    ]);
+
+    expect(result.code).toBe(1);
+    const parsed = JSON.parse(result.stderr);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error.code).toBe('ERROR');
+    expect(typeof parsed.error.message).toBe('string');
+  });
+
+  it('should return deterministic NOT_FOUND exit code and JSON error for plugin prepare missing plugin', async () => {
+    await withTestServer(async ({ dir, baseUrl, apiKey }) => {
+      const result = await runCli(['plugin', 'prepare', 'missing-plugin', '--json'], {
+        cwd: dir,
+        env: { AUTOKESTRA_SERVER_URL: baseUrl, AUTOKESTRA_API_KEY: apiKey },
+      });
+
+      expect(result.code).toBe(4);
+      const parsed = JSON.parse(result.stderr);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.error.code).toBe('NOT_FOUND');
+      expect(parsed.error.message).toContain("missing-plugin");
+    });
+  });
+
   it('should apply, get, list, and delete a workflow', async () => {
     await withTestServer(async ({ dir, baseUrl, apiKey }) => {
       const wfPath = join(dir, 'wf.yaml');
@@ -315,7 +348,10 @@ describe('CLI', () => {
       });
 
       expect(result.code).toBe(4);
-      expect(result.stderr).toContain("Plugin 'missing-plugin' not found");
+      const parsed = JSON.parse(result.stderr);
+      expect(parsed.ok).toBe(false);
+      expect(parsed.error.code).toBe('NOT_FOUND');
+      expect(parsed.error.message).toContain("Plugin 'missing-plugin' not found");
     });
   });
 
