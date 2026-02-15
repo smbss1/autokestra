@@ -34,6 +34,30 @@ describe('bash plugin execution', () => {
     expect(entries.some((entry) => entry.includes('[stdout] visible-log-line'))).toBe(true);
   });
 
+  test('supports raw stream passthrough mode', async () => {
+    const entries: string[] = [];
+    const capturingLogger = {
+      info: (message: string) => entries.push(`INFO:${message}`),
+      warn: (message: string) => entries.push(`WARN:${message}`),
+      error: () => undefined,
+      debug: () => undefined,
+    };
+
+    const output = await executeExec(
+      {
+        command: 'echo raw-line',
+        shell: 'bash',
+        timeoutMs: 10_000,
+        logMode: 'raw',
+      },
+      { log: capturingLogger }
+    );
+
+    expect(output.success).toBe(true);
+    expect(entries.some((entry) => entry.includes('INFO:raw-line'))).toBe(true);
+    expect(entries.some((entry) => entry.includes('[stdout] raw-line'))).toBe(false);
+  });
+
   test('executes command successfully', async () => {
     const output = await executeExec(
       {

@@ -1,4 +1,4 @@
-import { Logger } from '@autokestra/plugin-sdk';
+import { collectPluginStreams, Logger, type StreamPassthroughMode } from '@autokestra/plugin-sdk';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -15,6 +15,7 @@ export type ExecInput = {
   cwd?: string;
   workspacePath?: string;
   timeoutMs?: number;
+  logMode?: StreamPassthroughMode;
 };
 
 export type ExecOutput = {
@@ -58,110 +59,6 @@ const DEFAULT_TIMEOUT_MS = 120000;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const MAX_LOG_LINES_PER_STREAM = 200;
 const MAX_LOG_LINE_CHARS = 2000;
-const MAX_PENDING_LINE_CHARS = MAX_LOG_LINE_CHARS * 4;
-
-type StreamCollectResult = {
-  value: string;
-  truncated: boolean;
-};
-
-async function collectStream(
-  stream: ReadableStream,
-  context: ExecutionContext,
-  streamName: 'stdout' | 'stderr'
-): Promise<StreamCollectResult> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  const logger = streamName === 'stderr' ? context.log.warn : context.log.info;
-
-  const capturedChunks: Uint8Array[] = [];
-  let capturedBytes = 0;
-  let outputTruncated = false;
-
-  let pending = '';
-  let totalLines = 0;
-  let loggedLines = 0;
-  let lineLengthTruncated = false;
-
-  const logLine = (rawLine: string) => {
-    const line = rawLine.trimEnd();
-    if (!line.length) return;
-
-    totalLines += 1;
-    if (loggedLines >= MAX_LOG_LINES_PER_STREAM) {
-      return;
-    }
-
-    const formatted =
-      line.length > MAX_LOG_LINE_CHARS
-        ? `${line.slice(0, MAX_LOG_LINE_CHARS)}...[TRUNCATED]`
-        : line;
-
-    if (line.length > MAX_LOG_LINE_CHARS) {
-      lineLengthTruncated = true;
-    }
-
-    logger(`[${streamName}] ${formatted}`);
-    loggedLines += 1;
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      if (capturedBytes < MAX_OUTPUT_BYTES) {
-        const remaining = MAX_OUTPUT_BYTES - capturedBytes;
-        if (value.byteLength <= remaining) {
-          capturedChunks.push(value);
-          capturedBytes += value.byteLength;
-        } else {
-          capturedChunks.push(value.subarray(0, remaining));
-          capturedBytes += remaining;
-          outputTruncated = true;
-        }
-      } else {
-        outputTruncated = true;
-      }
-
-      pending += decoder.decode(value, { stream: true });
-
-      const lines = pending.split(/\r?\n/);
-      pending = lines.pop() || '';
-      for (const line of lines) {
-        logLine(line);
-      }
-
-      while (pending.length > MAX_PENDING_LINE_CHARS) {
-        logLine(pending.slice(0, MAX_PENDING_LINE_CHARS));
-        pending = pending.slice(MAX_PENDING_LINE_CHARS);
-        lineLengthTruncated = true;
-      }
-    }
-
-    pending += decoder.decode();
-    if (pending.length > 0) {
-      logLine(pending);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  if (totalLines > loggedLines || lineLengthTruncated || outputTruncated) {
-    context.log.warn(`${streamName} logs truncated`, {
-      totalLines,
-      loggedLines,
-      lineLengthTruncated,
-      outputTruncated,
-    });
-  }
-
-  return {
-    value: Buffer.concat(capturedChunks.map((chunk) => Buffer.from(chunk))).toString('utf8'),
-    truncated: outputTruncated,
-  };
-}
-
 function resolveWorkingDir(input: ExecInput): string {
   const baseWorkspace =
     (typeof input.workspacePath === 'string' && input.workspacePath.trim().length > 0
@@ -215,6 +112,7 @@ async function executeShell(params: {
   env?: Record<string, string>;
   timeoutMs: number;
   context: ExecutionContext;
+  logMode: StreamPassthroughMode;
 }): Promise<{ stdout: string; stderr: string; exitCode: number; timedOut: boolean; durationMs: number; stdoutTruncated: boolean; stderrTruncated: boolean }> {
   const started = Date.now();
 
@@ -238,20 +136,27 @@ async function executeShell(params: {
       }
     }, params.timeoutMs);
 
-    const [stdoutResult, stderrResult, exitCode] = await Promise.all([
-      collectStream(proc.stdout, params.context, 'stdout'),
-      collectStream(proc.stderr, params.context, 'stderr'),
+    const [streams, exitCode] = await Promise.all([
+      collectPluginStreams({
+        stdout: proc.stdout,
+        stderr: proc.stderr,
+        log: params.context.log,
+        passthroughMode: params.logMode,
+        maxCaptureBytesPerStream: MAX_OUTPUT_BYTES,
+        maxLogLinesPerStream: MAX_LOG_LINES_PER_STREAM,
+        maxLogLineChars: MAX_LOG_LINE_CHARS,
+      }),
       proc.exited,
     ]);
 
     return {
-      stdout: stdoutResult.value,
-      stderr: stderrResult.value,
+      stdout: streams.stdout,
+      stderr: streams.stderr,
       exitCode: timedOut ? 124 : exitCode,
       timedOut,
       durationMs: Date.now() - started,
-      stdoutTruncated: stdoutResult.truncated,
-      stderrTruncated: stderrResult.truncated,
+      stdoutTruncated: streams.stdoutTruncated,
+      stderrTruncated: streams.stderrTruncated,
     };
   } catch (error) {
     if (error instanceof BashPluginError) throw error;
@@ -279,6 +184,7 @@ export async function executeExec(input: ExecInput, context: ExecutionContext): 
     env: input.env,
     timeoutMs,
     context,
+    logMode: input.logMode ?? 'prefixed',
   });
 
   const success = !result.timedOut && result.exitCode === 0;

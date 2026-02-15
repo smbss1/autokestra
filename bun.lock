@@ -70,6 +70,7 @@
       },
       "devDependencies": {
         "@types/node": "^20.0.0",
+        "typescript": "^5.9.2",
       },
     },
     "packages/secrets": {
@@ -97,6 +98,7 @@
       "dependencies": {
         "@autokestra/plugin-sdk": "workspace:*",
         "valibot": "^1.2.0",
+        "yaml": "^2.8.1",
       },
     },
     "plugins/console": {

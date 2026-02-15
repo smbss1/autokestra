@@ -26,6 +26,7 @@ const execInputSchema = pipe(
     cwd: optional(pipe(string(), minLength(1))),
     workspacePath: optional(pipe(string(), minLength(1))),
     timeoutMs: optional(pipe(number(), minValue(1))),
+    logMode: optional(union([literal('prefixed'), literal('raw')])),
   }),
   check((value) => {
     const hasCommand = typeof value.command === 'string' && value.command.trim().length > 0;

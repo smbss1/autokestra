@@ -8,7 +8,7 @@
     "manifest:check": "bun run ./generate-manifest.ts && git diff --exit-code -- plugin.yaml"
   },
   "dependencies": {
-    "@autokestra/plugin-sdk": "workspace:*",
+    "@autokestra/plugin-sdk": "0.0.2",
     "valibot": "^1.2.0",
     "yaml": "^2.8.1"
   }
