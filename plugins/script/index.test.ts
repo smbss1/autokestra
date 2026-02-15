@@ -36,6 +36,15 @@ describe('script plugin validation', () => {
       })
     ).toThrow(/entry is required/i);
   });
+
+  test('rejects git source and directs to git-source plugin', () => {
+    expect(() =>
+      validateRunInput({
+        source: { type: 'git', repoUrl: 'https://example.com/repo.git' },
+        projectMode: true,
+      })
+    ).toThrow(/core\/git-source\.checkout/i);
+  });
 });
 
 describe('runtime selection', () => {

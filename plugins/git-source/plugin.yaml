@@ -1,0 +1,50 @@
+namespace: core
+name: git-source
+version: 0.1.0
+description: "Checkout Git repositories (public/private) into a local workspace"
+actions:
+  - name: checkout
+    description: "Clone and checkout a Git repository to a local workspace"
+    input:
+      type: object
+      properties:
+        repoUrl:
+          type: string
+        ref:
+          type: string
+        subdir:
+          type: string
+        auth:
+          type: object
+          properties:
+            method:
+              type: string
+              enum: [token, ssh]
+            token:
+              type: string
+            username:
+              type: string
+            privateKey:
+              type: string
+            knownHosts:
+              type: string
+          required: [method]
+        timeoutMs:
+          type: number
+      required: [repoUrl]
+    output:
+      type: object
+      properties:
+        success:
+          type: boolean
+        workspacePath:
+          type: string
+        repoUrl:
+          type: string
+        ref:
+          type: string
+        commit:
+          type: string
+        subdir:
+          type: string
+      required: [success, workspacePath, repoUrl, commit]

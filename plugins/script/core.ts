@@ -1,10 +1,8 @@
 import * as fs from 'node:fs';
-import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { randomUUID } from 'node:crypto';
 
-type SourceType = 'local' | 'git' | 'inline';
+type SourceType = 'local' | 'inline';
 type RuntimeSelection = 'auto' | 'bun' | 'tsx';
 type RuntimeResolved = 'bun' | 'tsx';
 type InstallTool = 'npm' | 'pnpm' | 'yarn' | 'bun';
@@ -14,29 +12,15 @@ type PhaseName = 'install' | 'prestart' | 'start' | 'poststart' | 'entry' | 'inl
 type ErrorCode =
   | 'VALIDATION_ERROR'
   | 'SOURCE_ERROR'
-  | 'GIT_AUTH_ERROR'
-  | 'GIT_CLONE_ERROR'
   | 'INSTALL_ERROR'
   | 'RUNTIME_NOT_FOUND'
   | 'SCRIPT_NOT_FOUND'
   | 'EXECUTION_ERROR'
   | 'TIMEOUT';
 
-type SourceAuth = {
-  method: 'token' | 'ssh';
-  token?: string;
-  username?: string;
-  privateKey?: string;
-  knownHosts?: string;
-};
-
 type SourceInput = {
   type: SourceType;
   path?: string;
-  repoUrl?: string;
-  ref?: string;
-  subdir?: string;
-  auth?: SourceAuth;
   language?: 'js' | 'ts';
   content?: string;
 };
@@ -84,10 +68,6 @@ export type RunOutput = {
   source: {
     type: SourceType;
     workspacePath: string;
-    repoUrl?: string;
-    ref?: string;
-    commit?: string;
-    subdir?: string;
   };
   runtime: {
     selected: RuntimeResolved;
@@ -218,27 +198,21 @@ export function validateRunInput(input: unknown): RunInput {
   }
 
   const source = candidate.source;
-  if (!['local', 'git', 'inline'].includes(source.type)) {
-    throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', "source.type must be one of: local, git, inline");
+  if ((source as any).type === 'git') {
+    throw new ScriptPluginError(
+      'VALIDATION_ERROR',
+      'resolve',
+      "source.type=git is no longer supported in core/script.run; use core/git-source.checkout then pass source.type=local"
+    );
+  }
+
+  if (!['local', 'inline'].includes(source.type)) {
+    throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', "source.type must be one of: local, inline");
   }
 
   if (source.type === 'local') {
     if (!source.path || source.path.trim().length === 0) {
       throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', "source.path is required for source.type=local");
-    }
-  }
-
-  if (source.type === 'git') {
-    if (!source.repoUrl || source.repoUrl.trim().length === 0) {
-      throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', "source.repoUrl is required for source.type=git");
-    }
-
-    if (source.auth?.method === 'token' && (!source.auth.token || source.auth.token.trim().length === 0)) {
-      throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', 'source.auth.token is required when method=token');
-    }
-
-    if (source.auth?.method === 'ssh' && (!source.auth.privateKey || source.auth.privateKey.trim().length === 0)) {
-      throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', 'source.auth.privateKey is required when method=ssh');
     }
   }
 
@@ -337,53 +311,6 @@ function resolveWorkspacePath(basePath: string, workingDir?: string): string {
   const joined = path.resolve(root, workingDir);
   ensureDirectory(joined);
   return joined;
-}
-
-function buildTokenAuthUrl(repoUrl: string, auth: SourceAuth): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(repoUrl);
-  } catch {
-    throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', `Invalid git repo URL: ${repoUrl}`);
-  }
-
-  if (parsed.protocol !== 'https:') {
-    throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', 'Token auth requires an https repository URL');
-  }
-
-  parsed.username = encodeURIComponent(auth.username?.trim() || 'x-access-token');
-  parsed.password = encodeURIComponent(auth.token || '');
-  return parsed.toString();
-}
-
-type SshPrepared = {
-  env: Record<string, string>;
-  cleanupPaths: string[];
-};
-
-async function prepareSshEnv(auth: SourceAuth): Promise<SshPrepared> {
-  const keyPath = path.join(os.tmpdir(), `autokestra-git-key-${randomUUID()}`);
-  await fsp.writeFile(keyPath, auth.privateKey || '', 'utf8');
-  await fsp.chmod(keyPath, 0o600);
-
-  const cleanupPaths = [keyPath];
-  const commandParts = ['ssh', '-i', keyPath, '-o', 'IdentitiesOnly=yes'];
-
-  if (auth.knownHosts && auth.knownHosts.trim().length > 0) {
-    const knownHostsPath = path.join(os.tmpdir(), `autokestra-known-hosts-${randomUUID()}`);
-    await fsp.writeFile(knownHostsPath, auth.knownHosts, 'utf8');
-    cleanupPaths.push(knownHostsPath);
-    commandParts.push('-o', 'StrictHostKeyChecking=yes', '-o', `UserKnownHostsFile=${knownHostsPath}`);
-  } else {
-    commandParts.push('-o', 'StrictHostKeyChecking=no');
-  }
-
-  return {
-    env: {
-      GIT_SSH_COMMAND: commandParts.join(' '),
-    },
-    cleanupPaths,
-  };
 }
 
 type CommandRun = {
@@ -518,10 +445,6 @@ type ResolvedSource = {
   entryPath?: string;
   sourceSummary: {
     type: SourceType;
-    repoUrl?: string;
-    ref?: string;
-    commit?: string;
-    subdir?: string;
   };
   cleanupPaths: string[];
 };
@@ -558,77 +481,7 @@ async function resolveSource(input: RunInput, baseTempDir: string): Promise<Reso
     };
   }
 
-  const tmpDir = fs.mkdtempSync(path.join(baseTempDir, 'git-'));
-  const cloneDir = path.join(tmpDir, 'repo');
-
-  let repoUrl = source.repoUrl || '';
-  let extraEnv: Record<string, string> = {};
-  const cleanupPaths: string[] = [tmpDir];
-
-  if (source.auth?.method === 'token') {
-    repoUrl = buildTokenAuthUrl(repoUrl, source.auth);
-  }
-
-  if (source.auth?.method === 'ssh') {
-    const prepared = await prepareSshEnv(source.auth);
-    extraEnv = prepared.env;
-    cleanupPaths.push(...prepared.cleanupPaths);
-  }
-
-  const cloneResult = await runCommand({
-    command: 'git',
-    args: ['clone', '--depth', '1', repoUrl, cloneDir],
-    cwd: process.cwd(),
-    env: extraEnv,
-    timeoutMs: Math.max(1, input.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-  });
-
-  if (cloneResult.exitCode !== 0) {
-    const code: ErrorCode = source.auth ? 'GIT_AUTH_ERROR' : 'GIT_CLONE_ERROR';
-    throw new ScriptPluginError(code, 'clone', cloneResult.stderr || 'Failed to clone repository');
-  }
-
-  if (source.ref && source.ref.trim().length > 0) {
-    const checkoutResult = await runCommand({
-      command: 'git',
-      args: ['checkout', source.ref],
-      cwd: cloneDir,
-      env: extraEnv,
-      timeoutMs: Math.max(1, input.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-    });
-
-    if (checkoutResult.exitCode !== 0) {
-      const code: ErrorCode = source.auth ? 'GIT_AUTH_ERROR' : 'GIT_CLONE_ERROR';
-      throw new ScriptPluginError(code, 'clone', checkoutResult.stderr || `Failed to checkout ref ${source.ref}`);
-    }
-  }
-
-  let commit = '';
-  const commitResult = await runCommand({
-    command: 'git',
-    args: ['rev-parse', 'HEAD'],
-    cwd: cloneDir,
-    env: extraEnv,
-    timeoutMs: 5000,
-  });
-  if (commitResult.exitCode === 0) {
-    commit = commitResult.stdout.trim();
-  }
-
-  const workspacePath = resolveWorkspacePath(cloneDir, source.subdir || input.workingDir);
-
-  return {
-    mode: input.projectMode ? 'project' : 'entry',
-    workspacePath,
-    sourceSummary: {
-      type: 'git',
-      repoUrl: source.repoUrl,
-      ref: source.ref,
-      subdir: source.subdir,
-      commit,
-    },
-    cleanupPaths,
-  };
+  throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', `Unsupported source type: ${(source as any).type}`);
 }
 
 function getRemainingTimeout(deadline: number): number {
@@ -860,10 +713,6 @@ export async function executeRun(inputRaw: unknown, context: ExecutionContext): 
       source: {
         type: source.sourceSummary.type,
         workspacePath,
-        repoUrl: source.sourceSummary.repoUrl,
-        ref: source.sourceSummary.ref,
-        commit: source.sourceSummary.commit,
-        subdir: source.sourceSummary.subdir,
       },
       runtime: {
         selected: runtime,

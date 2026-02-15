@@ -7,16 +7,23 @@ trigger:
   cron: "15 * * * *"
 
 tasks:
+  - id: checkout
+    type: core/git-source.checkout
+    inputs:
+      repoUrl: "https://github.com/acme/private-repo.git"
+      ref: "main"
+      auth:
+        method: token
+        token: "{{ secrets.GITHUB_TOKEN }}"
+      timeoutMs: 180000
+
   - id: run_private_repo_token
     type: core/script.run
+    needs: [checkout]
     inputs:
       source:
-        type: git
-        repoUrl: "https://github.com/acme/private-repo.git"
-        ref: "main"
-        auth:
-          method: token
-          token: "{{ secrets.GITHUB_TOKEN }}"
+        type: local
+        path: "{{ tasks.checkout.output.workspacePath }}"
       projectMode: true
       runtime: bun
       install:

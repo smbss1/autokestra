@@ -1,7 +1,7 @@
 namespace: core
 name: script
 version: 0.1.0
-description: "Run JS/TS scripts and full package.json projects from local, git, or inline sources"
+description: "Run JS/TS scripts and full package.json projects from local or inline sources"
 actions:
   - name: run
     description: "Run a JavaScript/TypeScript script or project"
@@ -13,30 +13,9 @@ actions:
           properties:
             type:
               type: string
-              enum: [local, git, inline]
+              enum: [local, inline]
             path:
               type: string
-            repoUrl:
-              type: string
-            ref:
-              type: string
-            subdir:
-              type: string
-            auth:
-              type: object
-              properties:
-                method:
-                  type: string
-                  enum: [token, ssh]
-                token:
-                  type: string
-                username:
-                  type: string
-                privateKey:
-                  type: string
-                knownHosts:
-                  type: string
-              required: [method]
             language:
               type: string
               enum: [js, ts]
@@ -100,16 +79,8 @@ actions:
           properties:
             type:
               type: string
-              enum: [local, git, inline]
+              enum: [local, inline]
             workspacePath:
-              type: string
-            repoUrl:
-              type: string
-            ref:
-              type: string
-            commit:
-              type: string
-            subdir:
               type: string
           required: [type, workspacePath]
         runtime:

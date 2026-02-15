@@ -7,17 +7,24 @@ trigger:
   cron: "45 * * * *"
 
 tasks:
+  - id: checkout
+    type: core/git-source.checkout
+    inputs:
+      repoUrl: "git@github.com:acme/private-repo.git"
+      ref: "main"
+      auth:
+        method: ssh
+        privateKey: "{{ secrets.GIT_SSH_PRIVATE_KEY }}"
+        knownHosts: "{{ secrets.GIT_KNOWN_HOSTS }}"
+      timeoutMs: 180000
+
   - id: run_private_repo_ssh
     type: core/script.run
+    needs: [checkout]
     inputs:
       source:
-        type: git
-        repoUrl: "git@github.com:acme/private-repo.git"
-        ref: "main"
-        auth:
-          method: ssh
-          privateKey: "{{ secrets.GIT_SSH_PRIVATE_KEY }}"
-          knownHosts: "{{ secrets.GIT_KNOWN_HOSTS }}"
+        type: local
+        path: "{{ tasks.checkout.output.workspacePath }}"
       projectMode: true
       runtime: tsx
       install:
