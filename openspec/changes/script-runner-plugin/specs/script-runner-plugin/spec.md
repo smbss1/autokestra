@@ -1,30 +1,30 @@
 ## ADDED Requirements
 
-### Requirement: Execute scripts from local, git, or inline sources
-The system SHALL provide a `core/script.run` plugin action that executes JavaScript/TypeScript workloads from one of three source types: local path, git repository, or inline code.
+### Requirement: Execute scripts from local or inline sources
+The system SHALL provide a `core/script.run` plugin action that executes JavaScript/TypeScript workloads from local path or inline code.
 
 #### Scenario: Execute from local source
 - **WHEN** a workflow task calls `core/script.run` with `source.type=local` and a valid local path
 - **THEN** the plugin SHALL resolve the local workspace and execute the requested workload in that workspace
 
-#### Scenario: Execute from git source
-- **WHEN** a workflow task calls `core/script.run` with `source.type=git` and a valid repository URL
-- **THEN** the plugin SHALL clone the repository, checkout the requested ref when provided, and execute in the resolved workspace
-
 #### Scenario: Execute from inline source
 - **WHEN** a workflow task calls `core/script.run` with `source.type=inline`, `language`, and `content`
 - **THEN** the plugin SHALL materialize the inline source in a temporary workspace and execute it with the selected runtime
 
-### Requirement: Support private git authentication in v1
-The system SHALL support private git repositories in `core/script.run` using either token-based HTTPS authentication or SSH authentication.
+### Requirement: Resolve git repositories via dedicated plugin
+The system SHALL provide a dedicated `core/git-source.checkout` action for Git clone/checkout operations, including private repository authentication, and SHALL keep Git logic out of `core/script.run`.
 
-#### Scenario: Private git using token
-- **WHEN** `source.type=git` and `source.auth.method=token` are provided with a valid token
-- **THEN** the plugin SHALL authenticate clone/fetch operations using the token and proceed with execution
+#### Scenario: Resolve private git with token
+- **WHEN** a workflow task calls `core/git-source.checkout` with token auth and valid repository parameters
+- **THEN** the action SHALL clone/checkout the repository and return a local `workspacePath` for downstream tasks
 
-#### Scenario: Private git using SSH
-- **WHEN** `source.type=git` and `source.auth.method=ssh` are provided with a valid private key
-- **THEN** the plugin SHALL authenticate clone/fetch operations using SSH credentials and proceed with execution
+#### Scenario: Resolve private git with SSH
+- **WHEN** a workflow task calls `core/git-source.checkout` with SSH private key auth and valid repository parameters
+- **THEN** the action SHALL clone/checkout the repository and return a local `workspacePath` for downstream tasks
+
+#### Scenario: Script plugin does not accept git source
+- **WHEN** a workflow task calls `core/script.run` with `source.type=git`
+- **THEN** the action SHALL fail validation and direct users to `core/git-source.checkout`
 
 ### Requirement: Support runtime selection bun and tsx
 The system SHALL support runtime selection values `bun`, `tsx`, and `auto` for script execution.

@@ -1,50 +1,47 @@
 ## 1. Plugin scaffold and manifest
 
-- [x] 1.1 Create `plugins/script/` package structure (`index.ts`, `package.json`, `plugin.yaml`)
-- [x] 1.2 Define `core/script.run` manifest input schema for `source`, `projectMode`, `runtime`, `install`, `lifecycle`, `entry`, `args`, `env`, `timeoutMs`
-- [x] 1.3 Define output schema for structured execution result (`success`, runtime, phases, exitCode, duration, logs, error)
+- [ ] 1.1 Update `plugins/script/` manifest and input schema to support only `source.type=local|inline`
+- [ ] 1.2 Create `plugins/git-source/` package structure (`index.ts`, `package.json`, `plugin.yaml`)
+- [ ] 1.3 Define `core/git-source.checkout` input/output schemas (`repoUrl`, `ref`, `subdir`, auth, `workspacePath`, commit)
 
 ## 2. Input validation and source resolution
 
-- [x] 2.1 Implement validation rules for `source.type=local|git|inline` and required fields per mode
-- [x] 2.2 Implement local source workspace resolution with optional `workingDir`
-- [x] 2.3 Implement inline source materialization into temporary workspace files
-- [x] 2.4 Implement git clone + checkout (`repoUrl`, `ref`, `subdir`) for public repositories
-- [x] 2.5 Reject unsupported v1 input `startCommand` with explicit validation error
+- [ ] 2.1 Remove git validation branch from `core/script.run` and reject `source.type=git`
+- [ ] 2.2 Keep local source workspace resolution with optional `workingDir` in `core/script.run`
+- [ ] 2.3 Keep inline source materialization in `core/script.run`
+- [ ] 2.4 Keep rejection of unsupported v1 input `startCommand` with explicit validation error
 
 ## 3. Private git authentication
 
-- [x] 3.1 Implement token-based git auth flow for private HTTPS repositories
-- [x] 3.2 Implement SSH-based git auth flow using provided private key and optional known_hosts
-- [x] 3.3 Add structured error mapping for clone/auth failures (`GIT_AUTH_ERROR`, `GIT_CLONE_ERROR`)
+- [ ] 3.1 Implement token-based git auth flow in `core/git-source.checkout`
+- [ ] 3.2 Implement SSH-based git auth flow in `core/git-source.checkout`
+- [ ] 3.3 Add structured error mapping for clone/auth failures in `core/git-source.checkout` (`GIT_AUTH_ERROR`, `GIT_CLONE_ERROR`)
 
 ## 4. Runtime and execution orchestration
 
-- [x] 4.1 Implement runtime selection `auto|bun|tsx` with deterministic fallback behavior
-- [x] 4.2 Implement non-project execution path for `entry` and inline script execution
-- [x] 4.3 Implement project mode lifecycle detection for `prestart`, `start`, `poststart`
-- [x] 4.4 Execute lifecycle phases conditionally by script existence and flags, preserving strict order
+- [ ] 4.1 Keep runtime selection `auto|bun|tsx` with deterministic fallback behavior in `core/script.run`
+- [ ] 4.2 Keep non-project execution path for `entry` and inline script execution
+- [ ] 4.3 Keep project mode lifecycle detection for `prestart`, `start`, `poststart`
+- [ ] 4.4 Keep lifecycle execution conditional by script existence and flags in strict order
 
 ## 5. Install phase and process controls
 
-- [x] 5.1 Implement optional dependency installation phase (`npm|pnpm|yarn|bun|custom command`)
-- [x] 5.2 Enforce `install.enabled=false` as an explicit override (skip install even when lockfile exists)
-- [x] 5.3 Enforce timeout handling across install and execution phases
-- [x] 5.4 Capture stdout/stderr and truncation metadata for large outputs
-- [x] 5.5 Cap final action output `stdout` and `stderr` to 1 MiB each
+- [ ] 5.1 Keep optional dependency installation phase in `core/script.run`
+- [ ] 5.2 Keep `install.enabled=false` as explicit override in `core/script.run`
+- [ ] 5.3 Keep timeout handling across install and execution phases
+- [ ] 5.4 Keep stdout/stderr capture and truncation metadata
+- [ ] 5.5 Keep final output cap of 1 MiB per stream
 
 ## 6. Structured output, logging, and error model
 
-- [x] 6.1 Produce final output contract with mode, source summary, selected runtime, ordered phase results, and final status
-- [x] 6.2 Emit phase-level runtime logs with clear start/end and execution diagnostics
-- [x] 6.3 Implement structured failure object with categorized codes (`VALIDATION_ERROR`, `SOURCE_ERROR`, `INSTALL_ERROR`, `EXECUTION_ERROR`, `TIMEOUT`, etc.)
+- [ ] 6.1 Update `core/script.run` output contract to remove Git-specific source fields
+- [ ] 6.2 Emit phase-level runtime logs with clear start/end and streaming output diagnostics
+- [ ] 6.3 Keep structured failure object with categorized codes for script execution
 
 ## 7. Tests and documentation
 
-- [x] 7.1 Add unit tests for input validation and source mode branching
-- [x] 7.2 Add tests for lifecycle behavior (missing `prestart`/`poststart`, missing `start`, success path)
-- [x] 7.3 Add tests for runtime selection behavior (`bun`, `tsx`, `auto`)
-- [x] 7.4 Add tests for error classification and timeout handling
-- [x] 7.5 Add workflow examples for local, inline, git private token, and git private ssh usage
-- [x] 7.6 Add tests for output truncation at 1 MiB for stdout and stderr
-- [x] 7.7 Add tests confirming `install.enabled=false` skips install despite lockfile
+- [ ] 7.1 Update tests to enforce rejection of `source.type=git` in `core/script.run`
+- [ ] 7.2 Add tests for `core/git-source.checkout` (public, token, ssh, error mapping)
+- [ ] 7.3 Keep lifecycle tests in `core/script.run`
+- [ ] 7.4 Keep runtime selection + timeout + truncation tests in `core/script.run`
+- [ ] 7.5 Update workflow examples to chain `core/git-source.checkout` then `core/script.run`

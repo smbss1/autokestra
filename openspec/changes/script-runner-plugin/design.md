@@ -6,8 +6,8 @@ Le moteur exécute déjà des plugins `core/*` via le runtime processus Bun, ave
 
 **Goals:**
 - Introduire un plugin officiel `core/script` avec action `run`.
-- Supporter trois modes source: `local`, `git` (public/privé), `inline`.
-- Supporter auth Git privée via `token` et `ssh`.
+- Supporter deux modes source dans `core/script`: `local` et `inline`.
+- Introduire un plugin officiel `core/git-source` pour la résolution Git public/privé.
 - Supporter runtime utilisateur `bun`, `tsx`, et `auto`.
 - Supporter mode projet `package.json` avec exécution conditionnelle `prestart -> start -> poststart`.
 - Fournir un output structuré exploitable dans les tâches suivantes (phases, exit code, durée, stdout/stderr, erreurs catégorisées).
@@ -24,15 +24,15 @@ Le moteur exécute déjà des plugins `core/*` via le runtime processus Bun, ave
    - Alternative considérée: étendre un plugin existant (`http`, `console`) ; rejetée car mélange de responsabilités.
 
 2. **Contrat d’entrée orienté source + mode**
-   - Input unifié avec `source` (`local|git|inline`), `projectMode`, `runtime`, `install`, `lifecycle`, `entry`, `args`, `env`, `timeoutMs`.
-   - Rationale: un seul point d’entrée pour cas simples (inline) et complets (repo projet).
-   - Alternative: actions distinctes (`runInline`, `runProject`, `runGit`) ; rejetée pour limiter fragmentation API.
+   - `core/script.run` accepte `source` (`local|inline`), `projectMode`, `runtime`, `install`, `lifecycle`, `entry`, `args`, `env`, `timeoutMs`.
+   - Rationale: garder `core/script` focalisé sur l’exécution de scripts/projets et séparer la récupération de code.
+   - Alternative: conserver `git` dans `core/script` ; rejetée pour réduire le couplage.
 
-3. **Git privé V1 via token ou SSH**
-   - `token`: clone HTTPS avec token injecté au process git.
-   - `ssh`: clé privée + known_hosts injectés dans un espace de travail temporaire.
-   - Rationale: couvre les usages entreprise sans attendre une V2.
-   - Alternative: repos publics uniquement ; rejetée car insuffisant pour le besoin exprimé.
+3. **Plugin dédié `core/git-source` pour Git public/privé**
+   - `core/git-source.checkout` gère clone/checkout/subdir + auth (`token`/`ssh`) et retourne un `workspacePath` local.
+   - `core/script.run` n’implémente plus de logique Git.
+   - Rationale: séparation des responsabilités et meilleure maintenabilité/sécurité.
+   - Alternative: deux actions Git dans `core/script` ; rejetée pour éviter duplication des responsabilités.
 
 4. **Sélection runtime `auto|bun|tsx`**
    - `auto`: préfère `bun` si disponible, sinon `tsx`.
@@ -70,12 +70,14 @@ Le moteur exécute déjà des plugins `core/*` via le runtime processus Bun, ave
 - **[Risque] Fuite de secrets via stdout/stderr** → **Mitigation**: ne pas journaliser les valeurs d’inputs sensibles, limiter et tronquer logs, recommander secrets manager pour tokens/keys.
 - **[Risque] Divergence runtime (`bun` vs `tsx`)** → **Mitigation**: output inclut runtime effectivement utilisé et commande résolue; mode `auto` déterministe.
 - **[Risque] Auth SSH Git fragile (known_hosts)** → **Mitigation**: validation explicite des entrées SSH et messages d’erreur catégorisés (`GIT_AUTH_ERROR`).
+- **[Risque] Interface inter-plugin (git-source -> script) mal alignée** → **Mitigation**: contrat stable sur `workspacePath` en sortie de `core/git-source`.
 - **[Risque] Durées d’installation dépendances élevées** → **Mitigation**: phase `install` optionnelle et timeout configurable.
 
 ## Migration Plan
 
 1. Ajouter le plugin `core/script` (manifest + index runtime) sans modifier les plugins existants.
-2. Ajouter exemples YAML pour `local`, `git` privé token, `git` privé ssh, `inline`.
+2. Ajouter le plugin `core/git-source` (manifest + index runtime) pour cloner/checkout des repos.
+3. Ajouter exemples YAML chaînés (`core/git-source.checkout` puis `core/script.run`) pour Git privé token/ssh, plus exemples `local` et `inline`.
 3. Documenter schéma input/output et comportements lifecycle.
 4. Déployer sans migration de données (aucun changement de persistence attendu).
 5. Rollback: supprimer/retirer le plugin `core/script` des chemins plugins si incident.
