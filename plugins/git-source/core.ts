@@ -155,7 +155,12 @@ function resolveWorkspacePath(basePath: string, subdir?: string): string {
   return joined;
 }
 
-function buildTokenAuthUrl(repoUrl: string, auth: SourceAuth): string {
+function inferRepoOwnerFromPath(pathname: string): string | undefined {
+  const parts = pathname.split('/').filter(Boolean);
+  return parts.length > 0 ? parts[0] : undefined;
+}
+
+export function buildTokenAuthUrl(repoUrl: string, auth: SourceAuth): string {
   let parsed: URL;
   try {
     parsed = new URL(repoUrl);
@@ -167,9 +172,15 @@ function buildTokenAuthUrl(repoUrl: string, auth: SourceAuth): string {
     throw new GitSourceError('VALIDATION_ERROR', 'resolve', 'Token auth requires an https repository URL');
   }
 
-  parsed.username = auth.username?.trim() || 'x-access-token';
-  parsed.password = auth.token || '';
-  return parsed.toString();
+  const username = (auth.username?.trim() || inferRepoOwnerFromPath(parsed.pathname) || 'x-access-token').trim();
+  const token = (auth.token || '').trim();
+
+  if (!username) {
+    throw new GitSourceError('VALIDATION_ERROR', 'resolve', 'Unable to derive username for token auth URL');
+  }
+
+  const credentials = `${username}:${token}`;
+  return `${parsed.protocol}//${credentials}@${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
 type SshPrepared = {
@@ -223,6 +234,7 @@ export async function executeCheckout(inputRaw: unknown, context: ExecutionConte
   try {
     if (input.auth?.method === 'token') {
       repoUrl = buildTokenAuthUrl(input.repoUrl, input.auth);
+      context.log.debug('Built token auth URL: ' + repoUrl);
     }
 
     if (input.auth?.method === 'ssh') {

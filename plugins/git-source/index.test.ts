@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { executeCheckout, validateCheckoutInput } from './core';
+import { buildTokenAuthUrl, executeCheckout, validateCheckoutInput } from './core';
 
 const logger = {
   info: () => undefined,
@@ -32,6 +32,25 @@ describe('git-source validation', () => {
         auth: { method: 'ssh' },
       })
     ).toThrow(/auth.privateKey is required/i);
+  });
+
+  test('builds token auth URL with explicit username and token', () => {
+    const url = buildTokenAuthUrl('https://github.com/acme/repo.git', {
+      method: 'token',
+      username: 'acme-user',
+      token: 'ghp_123',
+    });
+
+    expect(url).toBe('https://acme-user:ghp_123@github.com/acme/repo.git');
+  });
+
+  test('derives username from repo path when omitted', () => {
+    const url = buildTokenAuthUrl('https://github.com/acme/repo.git', {
+      method: 'token',
+      token: 'ghp_123',
+    });
+
+    expect(url).toBe('https://acme:ghp_123@github.com/acme/repo.git');
   });
 });
 
