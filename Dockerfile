@@ -58,8 +58,13 @@ RUN apt-get update \
     ca-certificates \
     git \
     docker.io \
-    docker-compose-plugin \
   && rm -rf /var/lib/apt/lists/*
+
+# Note: the `docker-compose-plugin` package is not available in the default
+# Debian slim repositories. If you need `docker compose` inside the image,
+# either install the official Docker apt repository or download the Compose
+# CLI plugin binary from the Docker Compose releases and place it under
+# `/usr/local/lib/docker/cli-plugins/docker-compose`.
 
 WORKDIR /app
 COPY --from=deps /usr/local/bin/bun /usr/local/bin/bun
