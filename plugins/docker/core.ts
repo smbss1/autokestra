@@ -1,4 +1,5 @@
 import { ScriptPluginError } from '../script/core'
+import { collectPluginStreams } from '@autokestra/plugin-sdk'
 import * as path from 'node:path'
 
 function now() { return Date.now() }
@@ -20,29 +21,34 @@ type DockerExecutionContext = {
   securityMode?: SecurityMode
 }
 
-async function runCommand(cmd: string[], timeoutMs?: number): Promise<CommandResult> {
+async function runCommand(cmd: string[], timeoutMs?: number, log?: any): Promise<CommandResult> {
   try {
     const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe', env: { ...process.env } })
 
     let killed = false
     let timer: ReturnType<typeof setTimeout> | null = null
-    if (typeof timeoutMs === 'number' && timeoutMs > 0) {
+    const effectiveTimeout = typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : undefined
+    if (effectiveTimeout) {
       timer = setTimeout(() => {
-        try {
-          proc.kill()
-        } catch {}
+        try { proc.kill() } catch {}
         killed = true
-      }, timeoutMs)
+      }, effectiveTimeout)
     }
 
-    const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited
-    ])
+    const streamCollector = collectPluginStreams({
+      stdout: proc.stdout,
+      stderr: proc.stderr,
+      log: log ?? { info: () => {}, warn: () => {} },
+      passthroughMode: 'prefixed',
+      stdoutPrefix: '[stdout] ',
+      stderrPrefix: '[stderr] ',
+    })
+
+    const exitCode = await proc.exited
+    const streams = await streamCollector
 
     if (timer) clearTimeout(timer)
-    return { exitCode, stdout, stderr, timedOut: killed }
+    return { exitCode, stdout: streams.stdout, stderr: streams.stderr, timedOut: killed }
   } catch (err: any) {
     throw new ScriptPluginError('EXECUTION_ERROR', 'exec', String(err))
   }
@@ -74,7 +80,7 @@ export async function executeBuild(input: any, ctx: DockerExecutionContext) {
     throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', 'build context is required')
   }
 
-  const commandRunner = ctx.runCommand ?? runCommand
+  const commandRunner: CommandRunner = ctx.runCommand ?? ((cmd, timeout) => runCommand(cmd, timeout, ctx.log))
   await ensureDockerAvailable(commandRunner)
   const start = now()
 
@@ -120,7 +126,7 @@ export async function executeRun(input: any, ctx: DockerExecutionContext) {
   if (!input || !input.image) throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', 'image is required')
   if (input.volumes) throw new ScriptPluginError('VALIDATION_ERROR', 'resolve', 'host volume mapping is not allowed in MVP')
 
-  const commandRunner = ctx.runCommand ?? runCommand
+  const commandRunner: CommandRunner = ctx.runCommand ?? ((cmd, timeout) => runCommand(cmd, timeout, ctx.log))
   await ensureDockerAvailable(commandRunner)
 
   const start = now()
