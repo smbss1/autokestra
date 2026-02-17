@@ -26,3 +26,7 @@ services:
       - ./config.example.yaml:/config/config.yaml:ro
       - ./data:/data
       - ./plugins:/app/plugins
+      # Bind-mount the host Docker socket so the server can run Docker tasks.
+      # WARNING: mounting the host socket grants effective root-level access to the host.
+      # Use only in trusted, controlled environments.
+      - /var/run/docker.sock:/var/run/docker.sock

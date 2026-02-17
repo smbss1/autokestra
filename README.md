@@ -14,6 +14,25 @@ For the v0.1 user journey (server start → apply workflow → inspect/log), see
 - [Docker Engine](https://docs.docker.com/engine/install/) (required for `core/docker.*` tasks)
 - Docker Compose support via `docker compose` (preferred) or `docker-compose` binary (required for `core/docker-compose.*` tasks)
 
+Running the server with access to the host Docker daemon
+
+If you want the server container to execute `core/docker.*` or `core/docker-compose.*` tasks against the host Docker daemon, run the container with the host Docker socket mounted. Example:
+
+```bash
+# start with the local image built from the repository
+docker run -d \
+  --name autokestra-server \
+  -p 7233:7233 \
+  -v $(pwd)/config.example.yaml:/config/config.yaml:ro \
+  -v $(pwd)/data:/data \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  autokestra-server:local
+```
+
+Or use the included `docker-compose.yml` which now binds `/var/run/docker.sock` by default for local development.
+
+Security note: mounting the Docker socket grants powerful privileges to processes inside the container (equivalent to root on the host). Only do this in trusted development or tightly controlled production environments. Consider using a remote Docker daemon with TLS authentication or a dedicated build runner for stronger isolation.
+
 ### Development Setup
 
 1. Clone the repository:
