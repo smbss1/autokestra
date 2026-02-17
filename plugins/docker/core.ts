@@ -1,4 +1,5 @@
 import { ScriptPluginError } from '../script/core'
+import * as path from 'node:path'
 
 function now() { return Date.now() }
 
@@ -84,7 +85,13 @@ export async function executeBuild(input: any, ctx: DockerExecutionContext) {
     })
   }
   if (input.dockerfile) {
-    args.push('-f', input.dockerfile)
+    // Ensure Dockerfile path is resolved relative to the build context so that
+    // the Docker daemon (running from the host) can locate the file correctly
+    // when the plugin process CWD differs from the repo workspace.
+    const dockerfilePath = path.isAbsolute(input.dockerfile)
+      ? input.dockerfile
+      : path.join(input.context, input.dockerfile)
+    args.push('-f', dockerfilePath)
   }
   if (input.buildArgs && typeof input.buildArgs === 'object') {
     for (const [k,v] of Object.entries(input.buildArgs)) {
