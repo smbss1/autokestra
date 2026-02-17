@@ -1,0 +1,31 @@
+id: docker_build_run
+enabled: true
+apiVersion: v1
+
+trigger:
+  type: cron
+  cron: "0 2 * * *"
+
+tasks:
+  - id: build_image
+    type: core/docker.build
+    inputs:
+      context: "."
+      dockerfile: "Dockerfile"
+      tags:
+        - "autokestra-example:latest"
+      buildArgs:
+        NODE_ENV: "production"
+      timeoutMs: 600000
+
+  - id: run_smoke_test
+    type: core/docker.run
+    needs: [build_image]
+    inputs:
+      image: "autokestra-example:latest"
+      command: "echo"
+      args:
+        - "docker run from workflow"
+      env:
+        APP_ENV: "ci"
+      timeoutMs: 120000

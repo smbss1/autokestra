@@ -1,0 +1,26 @@
+id: docker_compose_up_down
+enabled: true
+apiVersion: v1
+
+trigger:
+  type: cron
+  cron: "15 3 * * *"
+
+tasks:
+  - id: compose_up
+    type: core/docker-compose.up
+    inputs:
+      files:
+        - "./docker-compose.yml"
+      projectName: "autokestra-example"
+      detach: true
+      timeoutMs: 300000
+
+  - id: compose_down
+    type: core/docker-compose.down
+    needs: [compose_up]
+    inputs:
+      files:
+        - "./docker-compose.yml"
+      projectName: "autokestra-example"
+      timeoutMs: 300000

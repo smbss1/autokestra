@@ -1,0 +1,81 @@
+namespace: core
+name: docker
+version: 0.1.0
+description: "Run Docker build and run operations from workflows (trusted mode only)"
+runtime:
+  entrypoint: dist/index.js
+actions:
+  - name: build
+    description: "Build a Docker image from a context"
+    input:
+      type: object
+      properties:
+        context:
+          type: string
+        dockerfile:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        buildArgs:
+          type: object
+          additionalProperties:
+            type: string
+      required: [context]
+    output:
+      type: object
+      properties:
+        success:
+          type: boolean
+        exitCode:
+          type: number
+        durationMs:
+          type: number
+        timedOut:
+          type: boolean
+        stdout:
+          type: string
+        stderr:
+          type: string
+        invokedCommand:
+          type: string
+      required: [success, exitCode, durationMs, timedOut, stdout, stderr]
+  - name: run
+    description: "Run a Docker container from an image (MVP: no host volume mapping allowed)"
+    input:
+      type: object
+      properties:
+        image:
+          type: string
+        command:
+          type: string
+        args:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        timeoutMs:
+          type: number
+      required: [image]
+    output:
+      type: object
+      properties:
+        success:
+          type: boolean
+        exitCode:
+          type: number
+        durationMs:
+          type: number
+        timedOut:
+          type: boolean
+        stdout:
+          type: string
+        stderr:
+          type: string
+        invokedCommand:
+          type: string
+      required: [success, exitCode, durationMs, timedOut, stdout, stderr]

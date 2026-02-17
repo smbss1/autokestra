@@ -1,0 +1,73 @@
+namespace: core
+name: docker-compose
+version: 0.1.0
+description: "Run Docker Compose up/down operations from workflows (trusted mode only)"
+runtime:
+  entrypoint: dist/index.js
+actions:
+  - name: up
+    description: "Bring up docker-compose project"
+    input:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            type: string
+        projectName:
+          type: string
+        detach:
+          type: boolean
+        timeoutMs:
+          type: number
+      required: [files]
+    output:
+      type: object
+      properties:
+        success:
+          type: boolean
+        exitCode:
+          type: number
+        durationMs:
+          type: number
+        timedOut:
+          type: boolean
+        stdout:
+          type: string
+        stderr:
+          type: string
+        invokedCommand:
+          type: string
+      required: [success, exitCode, durationMs, timedOut, stdout, stderr]
+  - name: down
+    description: "Tear down docker-compose project"
+    input:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            type: string
+        projectName:
+          type: string
+        timeoutMs:
+          type: number
+      required: [files]
+    output:
+      type: object
+      properties:
+        success:
+          type: boolean
+        exitCode:
+          type: number
+        durationMs:
+          type: number
+        timedOut:
+          type: boolean
+        stdout:
+          type: string
+        stderr:
+          type: string
+        invokedCommand:
+          type: string
+      required: [success, exitCode, durationMs, timedOut, stdout, stderr]

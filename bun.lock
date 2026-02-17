@@ -86,7 +86,6 @@
       "version": "0.0.1",
       "dependencies": {
         "@autokestra/engine": "workspace:*",
-        "@autokestra/plugin-sdk": "workspace:*",
         "@autokestra/secrets": "workspace:*",
         "hono": "^4.0.0",
       },
@@ -108,6 +107,24 @@
       "version": "0.0.1",
       "dependencies": {
         "@autokestra/plugin-sdk": "workspace:*",
+      },
+    },
+    "plugins/docker": {
+      "name": "@autokestra/plugin-docker",
+      "version": "0.0.1",
+      "dependencies": {
+        "@autokestra/plugin-sdk": "0.0.2",
+        "valibot": "^1.2.0",
+        "yaml": "^2.8.1",
+      },
+    },
+    "plugins/docker-compose": {
+      "name": "@autokestra/plugin-docker-compose",
+      "version": "0.0.1",
+      "dependencies": {
+        "@autokestra/plugin-sdk": "0.0.2",
+        "valibot": "^1.2.0",
+        "yaml": "^2.8.1",
       },
     },
     "plugins/git-source": {
@@ -137,6 +154,10 @@
     "@autokestra/plugin-bash": ["@autokestra/plugin-bash@workspace:plugins/bash"],
 
     "@autokestra/plugin-console": ["@autokestra/plugin-console@workspace:plugins/console"],
+
+    "@autokestra/plugin-docker": ["@autokestra/plugin-docker@workspace:plugins/docker"],
+
+    "@autokestra/plugin-docker-compose": ["@autokestra/plugin-docker-compose@workspace:plugins/docker-compose"],
 
     "@autokestra/plugin-git-source": ["@autokestra/plugin-git-source@workspace:plugins/git-source"],
 

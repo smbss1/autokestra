@@ -18,7 +18,7 @@ COPY . .
 
 # Comma-separated list of built-in plugins to include in the final image.
 # Example: --build-arg AUTOKESTRA_CORE_PLUGINS=bash,console
-ARG AUTOKESTRA_CORE_PLUGINS=bash,console,http,git-source,script
+ARG AUTOKESTRA_CORE_PLUGINS=bash,console,http,git-source,script,docker,docker-compose
 
 # Build workspace packages required by runtime imports.
 RUN bun run --filter='@autokestra/plugin-sdk' build

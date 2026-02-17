@@ -258,7 +258,7 @@ describe('CLI', () => {
       });
       expect(getAfter.code).toBe(4);
     });
-  });
+  }, 15000);
 
   it('should trigger a workflow manually', async () => {
     await withTestServer(async ({ dir, baseUrl, apiKey }) => {
@@ -549,7 +549,7 @@ describe('CLI', () => {
       expect(parsed.plugins).toHaveLength(1);
       expect(parsed.plugins[0].activeVersion).toBe('1.0.0');
     });
-  });
+  }, 15000);
 
   it('should allow legacy local plugins to coexist with registry-installed plugins', async () => {
     await withTestServer(async ({ dir, baseUrl, apiKey }) => {

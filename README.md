@@ -11,6 +11,8 @@ For the v0.1 user journey (server start → apply workflow → inspect/log), see
 ### Prerequisites
 
 - [Bun](https://bun.sh/) (latest version recommended)
+- [Docker Engine](https://docs.docker.com/engine/install/) (required for `core/docker.*` tasks)
+- Docker Compose support via `docker compose` (preferred) or `docker-compose` binary (required for `core/docker-compose.*` tasks)
 
 ### Development Setup
 
@@ -164,6 +166,12 @@ workflow execution logs exec-123 --source plugin
 # Inspect task details
 workflow execution inspect exec-123 --with-logs
 ```
+
+If you use `core/docker.*` or `core/docker-compose.*` tasks:
+- Verify Docker CLI is available on the server host: `docker --version`
+- Verify Compose support: `docker compose version` (or `docker-compose --version`)
+- Confirm workflow security mode is `trusted` for these tasks (restricted mode is denied)
+- For `core/docker-compose.*`, ensure all `files` paths are present and readable from the server host
 
 #### Database Performance Issues
 ```bash

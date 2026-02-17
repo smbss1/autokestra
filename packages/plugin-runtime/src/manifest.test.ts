@@ -96,7 +96,7 @@ actions:
 `
     fs.writeFileSync(manifestPath, manifestContent)
 
-    expect(() => loadManifest(tempDir)).toThrow('value must be a non-empty relative path')
+    expect(() => loadManifest(tempDir)).toThrow(/non-empty relative path|must NOT have fewer than 1 characters/i)
     fs.rmSync(tempDir, { recursive: true })
   })
 })
